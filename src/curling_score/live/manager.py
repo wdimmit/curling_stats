@@ -85,6 +85,30 @@ def stream_start_s(job, recorder) -> float:
     return max(began.timestamp() - wall, 0.0)
 
 
+# What a camera game's claim and heartbeat say of its place on the sheet
+# (service/playlists.camera_game_fields).
+HANDOFF_KEYS = ("analysis_from", "handoff_at", "floor_at", "floor_pending")
+
+
+def _wall(text):
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(text).timestamp() if text else None
+    except (TypeError, ValueError):
+        return None
+
+
+def analysis_start_s(job, recorder) -> float:
+    """Where in a camera recording its game is read from: where the API says
+    (``analysis_from``: its lookahead opening, or a little before its
+    stream), else where its stream began (`stream_start_s`)."""
+    began, wall = _wall(job.get("analysis_from")), getattr(recorder, "wall_started", None)
+    if began is None or wall is None:
+        return stream_start_s(job, recorder)
+    return max(began - wall, 0.0)
+
+
 @dataclass
 class Stream:
     """One live job in hand: its recorder, and the lane's session for it."""
@@ -109,6 +133,14 @@ class Stream:
     pending: dict | None = field(default=None, repr=False)
     failures: int = 0
     retry_at: float = 0.0
+    # A camera game's place on its sheet, as the API last said (HANDOFF_KEYS);
+    # the wall time its own span was found to end, told to the API once; and
+    # when its stream's end was first heard (the lane follows a game still
+    # going past it).
+    handoff: dict = field(default_factory=dict)
+    own_until_wall: float | None = None
+    own_until_sent: bool = False
+    stop_seen_at: float | None = None
 
 
 def _in_background(fn):
@@ -290,10 +322,10 @@ class LiveManager:
         from curling_score.cameras import trim
 
         os.rename(directory, dest)
-        # Recorded from the schedule's start (a standby): only the broadcast
-        # is kept. Cut on the keeping thread -- it copies gigabytes. Until it
-        # is, the clips worker leaves the files alone (trim.PENDING).
-        cut = stream_start_s(stream.job, rec)
+        # Recorded ahead of where its game is read from (a standby): only
+        # that is kept. Cut on the keeping thread -- it copies gigabytes. Until
+        # it is, the clips worker leaves the files alone (trim.PENDING).
+        cut = analysis_start_s(stream.job, rec)
         sheet = int(stream.job["sheet"])
         meta = {"sheet": sheet, "wall_started": rec.wall_started, "clock": clock,
                 "kept_at": time.time()}
@@ -380,7 +412,8 @@ class LiveManager:
             log.exception("live job %s: recorder did not start", job["id"])
             self._fail(job, f"{type(exc).__name__}: {exc}", kind="transient")
             return
-        stream = Stream(job=job, recorder=recorder, last_beat=self.clock())
+        stream = Stream(job=job, recorder=recorder, last_beat=self.clock(),
+                        handoff={k: job[k] for k in HANDOFF_KEYS if k in job})
         if is_camera_game(job):
             _name_video(recorder, job["video_id"])
             self._follow(stream, job)
@@ -447,10 +480,23 @@ class LiveManager:
             return
         head = getattr(stream.recorder, "head_s", lambda: 0.0)()
         ends = sum(len(g["ends"]) for g in (stream.last_doc or {}).get("games", []))
+        extra = None
+        if stream.own_until_wall is not None and not stream.own_until_sent:
+            from datetime import datetime, timezone
+
+            extra = {"own_until": datetime.fromtimestamp(stream.own_until_wall,
+                                                         timezone.utc).isoformat()}
         try:
             got = self.api.progress(stream.job["id"], self.worker_id, "live", None,
-                                    f"recorded {head / 60:.0f} min, {ends} end(s) published")
+                                    f"recorded {head / 60:.0f} min, {ends} end(s) published",
+                                    **({"extra": extra} if extra else {}))
             stream.last_beat = self.clock()
+            if extra:
+                stream.own_until_sent = True
+            # A camera game's place on its sheet: the game before it, the next.
+            if isinstance(got, dict) and isinstance(got.get("game"), dict):
+                stream.handoff = {k: got["game"][k] for k in HANDOFF_KEYS
+                                  if k in got["game"]}
             # A practice watch nobody is on any more: the API says stop.
             if isinstance(got, dict) and got.get("stop"):
                 stream.stop_requested = True

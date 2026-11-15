@@ -35,16 +35,19 @@ class Api:
         self.artifact_files = []
         self.lose, self.stop = set(), set()
         self.games = {}       # job id -> the game a standby's heartbeat hands it
+        self.extras = []      # (job id, the heartbeat's extra fields)
 
     def claim(self, worker_id, model_id, gpu, kinds=None, cameras=False):
         self.claims.append(kinds)
         self.camera_claims.append(cameras)
         return self.jobs.pop(0) if self.jobs else None
 
-    def progress(self, job_id, worker_id, phase, fraction, message):
+    def progress(self, job_id, worker_id, phase, fraction, message, extra=None):
         if job_id in self.lose:
             raise Lost("not yours")
         self.progress_calls.append((job_id, phase, message))
+        if extra:
+            self.extras.append((job_id, extra))
         if job_id in self.games:
             return {"ok": True, "game": self.games[job_id]}
         return {"stop": True} if job_id in self.stop else None
@@ -1574,3 +1577,105 @@ def test_a_games_clock_counts_its_waits_from_where_its_stream_began(monkeypatch)
     rec.head_s = lambda: 2000.0
     manager_mod.LiveManager(Api(), "ryzen", model_id="m", gpu=None)._aligner(job, rec)
     assert made["head"]() == 140.0
+
+
+
+# ------------------------------------------- a sheet's games in a row (phase 3)
+WALL0 = 1793900701.0
+
+
+def iso(t):
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(t, timezone.utc).isoformat()
+
+
+class OwnedSession(ClockedSession):
+    """Records what it is told of its span; deciding until told its own end."""
+
+    def __init__(self, stream, publish, **kw):
+        super().__init__(stream, publish, **kw)
+        self.ownership, self.own_until_s, self.decide = [], None, False
+
+    def set_ownership(self, **kw):
+        self.ownership.append(kw)
+        if kw.get("stream_end_s") is not None:
+            self.decide = True
+
+    def deciding(self):
+        return self.decide and self.own_until_s is None
+
+
+class TestASheetsGamesInTheLane:
+    def camera_stream(self, n=3, **handoff):
+        job = {**camera_job(n), **handoff}
+        st = manager_mod.Stream(job=job, recorder=CamRecorder(job), aligner=Aligned(None))
+        st.handoff = dict(handoff)
+        return st
+
+    def test_a_lookahead_game_is_read_and_kept_from_its_opening(self):
+        job = {**camera_job(3), "analysis_from": iso(WALL0 + 1200.0)}
+        rec = CamRecorder(job)
+        assert manager_mod.analysis_start_s(job, rec) == pytest.approx(1200.0)
+        assert manager_mod.analysis_start_s(camera_job(3), rec) == \
+            manager_mod.stream_start_s(camera_job(3), rec)
+
+    def test_the_lane_passes_the_handoff_and_floor_to_the_session(self):
+        api = Api()
+        s = self.camera_stream(floor_pending=True, floor_at=None, handoff_at=None)
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=9)})
+        ln.step()
+        assert s.session.ownership[-1]["floor_pending"] is True
+        s.handoff = {"floor_pending": False, "floor_at": iso(WALL0 + 300.0),
+                     "handoff_at": iso(WALL0 + 3600.0)}
+        ln.step()
+        got = s.session.ownership[-1]
+        assert got["floor_s"] == pytest.approx(300.0)
+        assert got["handoff_s"] == pytest.approx(3600.0) and got["floor_pending"] is False
+
+    def test_a_game_still_going_when_its_stream_ends_keeps_recording(self):
+        api = Api()
+        s = self.camera_stream()
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.step()
+        s.stop_requested = True
+        for _ in range(5):
+            ln.step()
+        assert s.recorder.finished_stream == 0
+        assert [o["stream_end_s"] for o in s.session.ownership if "stream_end_s" in o] == [600.0]
+        s.session.own_until_s = 100.0            # head 600 >= 100 + the board margin
+        ln.step()
+        assert s.recorder.finished_stream == 1
+        assert s.own_until_wall == pytest.approx(WALL0 + 100.0)
+
+    def test_it_gives_up_following_after_45_minutes(self):
+        api = Api()
+        s = self.camera_stream()
+        t = [0.0]
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.clock = lambda: t[0]
+        ln.step()
+        s.stop_requested = True
+        ln.step()
+        t[0] = lane_mod.OVERRUN_MAX_S - 1
+        ln.step()
+        assert s.recorder.finished_stream == 0
+        t[0] = lane_mod.OVERRUN_MAX_S + 1
+        ln.step()
+        assert s.recorder.finished_stream == 1
+
+
+def test_own_until_is_sent_once():
+    api = Api([camera_job(3)])
+    t = [0.0]
+    m = manager_mod.LiveManager(
+        api, "ryzen", model_id="m", gpu=None, root=None, clock=lambda: t[0],
+        kinds=("camera_live",), cameras=True, make_recorder=lambda job: CamRecorder(job),
+        make_aligner=lambda job, rec: Aligned())
+    m.poll_once()
+    (s,) = m.streams()
+    s.own_until_wall = WALL0 + 100.0
+    for k in range(1, 4):
+        t[0] = 61.0 * k
+        m.poll_once()
+    assert api.extras == [("j_3", {"own_until": iso(WALL0 + 100.0)})]

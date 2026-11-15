@@ -14,8 +14,10 @@ from pathlib import Path
 
 from curling_score import timeline
 from curling_score.ingest import source
-from curling_score.live.manager import (is_camera_game, is_practice, is_standby,
-                                        stream_start_s)
+from curling_score.live import manager as manager_mod
+from curling_score.live.manager import (analysis_start_s, is_camera_game, is_practice,
+                                        is_standby)
+from curling_score.live.session import BOARD_BEHIND_S
 from curling_score.live.session import LiveError
 
 log = logging.getLogger(__name__)
@@ -25,6 +27,11 @@ log = logging.getLogger(__name__)
 # it is tried again. One stream's trouble never stops the others.
 MAX_FAILURES = 3
 RETRY_S = 60.0
+# A camera game still going when its stream ends is followed this long at
+# most (the user, 2026-11-14), and recorded this far past where its span of
+# the sheet ended, for the board's last read.
+OVERRUN_MAX_S = 45 * 60.0
+FINISH_MARGIN_S = BOARD_BEHIND_S + 30.0
 
 
 def _games(doc):
@@ -54,15 +61,45 @@ class LiveLane:
 
     def _camera_tick(self, stream):
         """A camera game's clock passed on as it is found or changes (the
-        session publishes the game again on it), and its recording finished
-        once its stream is over -- the cameras would go on for ever."""
+        session publishes the game again on it); its place on the sheet passed
+        on (`LiveSession.set_ownership`); and its recording finished once its
+        stream is over and its game is too -- followed past its stream's end
+        while it goes on (OVERRUN_MAX_S at most), and a little past the end of
+        its span (FINISH_MARGIN_S, for the board's last read)."""
         clock = stream.aligner.clock() if stream.aligner is not None else None
         if clock is not None:
             stream.session.set_clock(clock)
-        if stream.stop_requested and not stream.stream_finished:
-            stream.stream_finished = True
-            log.info("live job %s: its stream is over; recording finished", stream.job["id"])
-            stream.recorder.finish_stream()
+        session, rec = stream.session, stream.recorder
+        own = getattr(session, "set_ownership", None)
+        wall = getattr(rec, "wall_started", None)
+
+        def cam(text):
+            got = manager_mod._wall(text)
+            return None if got is None or wall is None else got - wall
+
+        if own is not None:
+            h = stream.handoff or {}
+            pending = bool(h.get("floor_pending"))
+            own(floor_s=None if pending else cam(h.get("floor_at")), floor_pending=pending,
+                handoff_s=cam(h.get("handoff_at")))
+        if stream.stream_finished or not stream.stop_requested:
+            return
+        if stream.stop_seen_at is None:
+            stream.stop_seen_at = self.clock()
+            if own is not None:
+                own(stream_end_s=rec.head_s())
+        until = getattr(session, "own_until_s", None)
+        if until is not None and wall is not None and stream.own_until_wall is None:
+            stream.own_until_wall = wall + until
+        deciding = getattr(session, "deciding", lambda: False)()
+        overrun = self.clock() - stream.stop_seen_at >= OVERRUN_MAX_S
+        if not overrun and (deciding or (until is not None
+                                         and rec.head_s() < until + FINISH_MARGIN_S)):
+            return
+        stream.stream_finished = True
+        log.info("live job %s: its stream and its game are over; recording finished%s",
+                 stream.job["id"], " (gave up following)" if overrun else "")
+        rec.finish_stream()
 
     def step(self) -> bool:
         """Do one unit of live work; False when there was nothing to do.
@@ -420,7 +457,7 @@ def video_sessions(weights, *, imgsz: int = 448, device=None,
                 saved_calibration=saved, save_calibration=save, prior_throws=prior)
         # The cameras recorded from the schedule's start (a standby): the
         # game is read from where its stream began.
-        start_s = stream_start_s(job, stream.recorder) if is_camera_game(job) else 0.0
+        start_s = analysis_start_s(job, stream.recorder) if is_camera_game(job) else 0.0
         return live.LiveSession(
             start_s=start_s,
             video_id=job["video_id"], url=source.canonical_url(job["video_id"]),
