@@ -17,6 +17,7 @@ clips worker takes these before the plays' batches: somebody is waiting.
 """
 
 import json
+import logging
 import re
 from datetime import timedelta
 
@@ -24,6 +25,8 @@ from curling_score import timeline
 from curling_score.game import format as format_mod
 from curling_score.service import slug
 from curling_score.service.records import ClipJob
+
+log = logging.getLogger(__name__)
 
 GAME_ROCK = re.compile(r"^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$")
 REASONS = ("no_release", "no_camera", "video_gone", "cut_failed")
@@ -417,3 +420,71 @@ def later(repo, job, run, reason: str, now) -> bool:
     repo.update_clip_job(job.id, state="done", finished_at=now, error=reason, worker_id=None,
                          lease_expires_at=None, rocks=rocks)
     return False
+
+
+def auto_job_id(run_id: str, game_index, end_ident) -> str:
+    """The auto clip job of one end: its rocks are named ``<g>.<e>.<s>``."""
+    return f"ca_{run_id}_{game_index}.{end_ident}"
+
+
+def auto_job_for(run_id: str, name: str) -> str:
+    """The auto clip job that cuts the rock named ``name``."""
+    game, end, _ = name.split(".")
+    return auto_job_id(run_id, game, end)
+
+
+def queue_auto(repo, run, doc: dict, now) -> list[str]:
+    """Ask for a clip of every delivery of a camera game, one job an end, so
+    its camera files can go once they are cut: each shown game's rocks seen
+    released (a practice-marked game's are not). The jobs wait LIVE_SETTLE_S,
+    while the game's files are filed and cut where its stream began. A game
+    read from YouTube gets none. Their ids go on the run; a run with nothing
+    to cut is clipped at once."""
+    feed = camera_feed_spec(run, doc)
+    if feed is None:
+        return []
+    ids = []
+    for game in doc.get("games", []):
+        if game.get("practice"):
+            continue
+        for end in game.get("ends", []):
+            rocks = [rock_spec(game, end, s) for s in end.get("shots") or []
+                     if not s.get("missing") and s.get("t_release_s") is not None]
+            if not rocks:
+                continue
+            job_id = auto_job_id(run.id, game["index"], timeline.end_identity(end))
+            repo.put_clip_job(ClipJob(
+                id=job_id, play_id="", user_id=AUTO_USER, source_id="", run_id=run.id,
+                video_id=run.video_id, state="queued", created_at=now,
+                run_after=now + timedelta(seconds=LIVE_SETTLE_S),
+                spec=_spec(doc.get("calibration"), rocks, feed)))
+            ids.append(job_id)
+    fields = {"auto_clips": ids}
+    if not ids:
+        fields["clipped_at"] = now
+    repo.update_run(run.id, **fields)
+    return ids
+
+
+def _auto_asked_since_ready(repo, run) -> bool:
+    if not run.auto_clips:
+        return False
+    first = repo.get_clip_job(run.auto_clips[0])
+    return first is not None and (run.ready_at is None or first.created_at >= run.ready_at)
+
+
+def catch_up_auto(repo, load_doc, now, *, days: float = 2.0) -> int:
+    """Every camera game ready in the last ``days`` whose deliveries were not
+    asked for since it was last analysed (a completion that failed to ask, or
+    a reprocess): asked for now (`queue_auto`). How many runs."""
+    queued = 0
+    for run in repo.runs_ready_since(now - timedelta(days=days)):
+        if run.source != "cameras" or run.status != "ready" or _auto_asked_since_ready(repo, run):
+            continue
+        try:
+            queue_auto(repo, run, load_doc(run), now)
+        except Exception:  # noqa: BLE001 - one game's trouble must not stop the rest
+            log.exception("auto clips for run %s were not asked for", run.id)
+            continue
+        queued += 1
+    return queued

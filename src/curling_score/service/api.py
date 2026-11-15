@@ -3526,6 +3526,14 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         resolved = dedupe.resolve_charts_for_run(repo, run, t)
         learn_play_starts_for_run(run)
         settle_sources_for_run(run)
+        if run.source == "cameras":
+            # Every delivery clipped while its camera files are kept: the
+            # hourly catch-up asks again if this fails.
+            try:
+                if gameclips.queue_auto(repo, run, run_doc(run), t):
+                    clip_queue_stirred()
+            except Exception:  # noqa: BLE001 - the game is ready either way
+                log.exception("auto clips for run %s were not asked for", run.id)
         return {"ok": True, "charts_resolved": resolved}
 
     @app.post("/api/worker/jobs/{job_id}/fail")
@@ -4283,6 +4291,12 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         if not (force or t.minute < 3):
             result["index"] = "not due"
             return result
+        try:
+            result["auto_clips"] = gameclips.catch_up_auto(repo, run_doc, t)
+            if result["auto_clips"]:
+                clip_queue_stirred()
+        except Exception as e:  # noqa: BLE001 - must never stop the poll
+            log.warning("auto clip catch-up failed: %s", e)
         try:
             result["index"] = index_playlists(always_stamp=False)
         except Exception as e:  # noqa: BLE001 - the index must never stop the poll

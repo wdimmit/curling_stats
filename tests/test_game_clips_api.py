@@ -158,6 +158,28 @@ class TestTheClipsWorkersRoutes:
         a_clip_job(w, src)
         assert claim(w).status_code == 200
 
+    def test_completing_a_camera_run_queues_its_clips(self, w):  # noqa: F811
+        from tests.test_service_api import work_through
+
+        doc = played_doc()
+        for s in doc["games"][0]["ends"][0]["shots"]:
+            s["t_release_s"] = s["t_rest_s"] - 20.0
+        doc["source"] = {**doc.get("source", {}), "sheet": 3,
+                         "clock": {"kind": "cameras", "offset_s": -900.0}}
+        _, _, src = a_played_game(w, doc)
+        run = w["repo"].get_run(w["repo"].get_source(src).current_run_id)
+        assert run.auto_clips == []                # the game above was not a camera run
+        w["repo"].update_run(run.id, source="cameras", sheet=3, ready_at=None, status="processing")
+        job = w["repo"].job_for_run(run.id)
+        w["repo"].update_job(job.id, state="running", worker_id=W)
+        r = w["client"].post(f"/api/worker/jobs/{job.id}/complete",
+                             json={"worker_id": W, "games": [], "format": "fours"},
+                             headers=WORKER)
+        assert r.status_code == 200, r.text
+        auto = [j for j in w["repo"].clip_jobs_in_state("queued") if j.user_id == "auto"]
+        assert auto and all(j.id.startswith(f"ca_{run.id}_") for j in auto)
+        assert w["repo"].get_run(run.id).auto_clips == sorted(j.id for j in auto)
+
     def test_a_failure_goes_back_then_gives_up(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
         _, run = a_clip_job(w, src)

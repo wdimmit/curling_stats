@@ -72,6 +72,11 @@ class Run:
     # A camera league game's stream was seen over (the poller): the worker is
     # told to stop recording its cameras.
     stream_ended_at: datetime | None = None
+    # A camera game's every delivery is clipped (service/gameclips.queue_auto):
+    # the auto clip jobs asked for at its completion, and when the last of
+    # them finished -- the workers keep its camera files until then.
+    auto_clips: list = field(default_factory=list)
+    clipped_at: datetime | None = None
     revised_at: datetime | None = None
     timeline_key: str | None = None
     meta_key: str | None = None
