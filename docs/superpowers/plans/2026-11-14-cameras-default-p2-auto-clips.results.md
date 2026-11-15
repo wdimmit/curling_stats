@@ -48,3 +48,20 @@ Branch `camera-direct`, commits 1fb6bab4..HEAD. Nothing is deployed yet.
 - No `live/<id>-youtube` is written.
 - Kept camera directories go once clipped and a day old.
 - A play opened after that still plays its clips.
+
+## Final review (fresh reviewer, 2026-11-14): 0 Critical, 4 Important (+1 re-graded), fixed in f2815af4
+
+- **A run left open for hours no longer holds the auto pass up.** Recording runs older than 6 h don't count.
+  Production had no open runs at all when checked before the deploy.
+- **A camera reprocess in flight keeps its files.** `clipped()` says False while any camera run of the video is
+  queued or processing.
+- **A play copies only clips the auto pass cut in today's style.** It no longer copies clips from people's shot asks,
+  so YouTube games are cut exactly as before, a re-cut still asks again, and repeated asks add no duplicate batches.
+- **The hourly catch-up skips practice runs, runs without a timeline, and runs already clipped since they were ready.**
+- **A game left half cut for over an hour ages out like any other.** This keeps the privacy page's three-day promise.
+- **Deferred minors are in the ledger:**
+  - a last-try lease failure leaves a run unclipped for 3 days;
+  - auto jobs add reads to the ask claims;
+  - a failed rmtree is counted as freed;
+  - rollback must fail any queued `ca_` jobs;
+  - auto cutting can run 4-6 min into a practice start.
