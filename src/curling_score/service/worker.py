@@ -22,6 +22,8 @@ from curling_score.ingest import cache, prune, source
 log = logging.getLogger("curling_score.worker")
 
 POLL_BUSY_S = 10.0    # after a job, look again soon: a league night queues five
+# An idle worker prunes the kept camera games this often (run_forever).
+CAMERA_PRUNE_S = 3600.0
 POLL_IDLE_S = 30.0    # otherwise stay well inside Firestore's free read quota
 HEARTBEAT_S = 60.0    # how often an idle worker says it is alive
 PROGRESS_MIN_GAP_S = 5.0
@@ -484,6 +486,7 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
     log.info("worker %s: model %s, gpu %s, cache %s", worker_id, model, gpu, root)
     idle_since = None
     served_live = False
+    last_cam_prune = None
     while True:
         if live is not None and live.busy():
             served_live = True
@@ -511,6 +514,16 @@ def run_forever(api: ApiClient, worker_id: str, *, root: Path, weights: str | No
             continue
         if job is None:
             idle_since = idle_since or time.monotonic()
+            # The kept camera games are pruned as games are kept, and, as one
+            # is clipped long after, on a quiet day too.
+            prune_cams = getattr(getattr(live, "manager", None), "prune", None)
+            if prune_cams is not None and (last_cam_prune is None
+                                           or time.monotonic() - last_cam_prune > CAMERA_PRUNE_S):
+                last_cam_prune = time.monotonic()
+                try:
+                    prune_cams()
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("prune of the kept camera games failed: %s", exc)
             if once:
                 return
             sleep(POLL_IDLE_S if time.monotonic() - idle_since > HEARTBEAT_S else POLL_BUSY_S)
@@ -618,12 +631,25 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
             trim.recover_interrupted(cams_root / "kept", worker_id)
         except OSError as exc:
             log.warning("could not look for interrupted cuts: %s", exc)
+    # A kept camera game is its game's only video until every delivery is
+    # clipped (the API says which): then WORKER_CAMERA_DAYS, and at most
+    # WORKER_CAMERA_MAX_DAYS either way.
     camera_days = float(os.environ.get("WORKER_CAMERA_DAYS", "3"))
+    camera_max_days = float(os.environ.get("WORKER_CAMERA_MAX_DAYS", camera_days))
+    asker = ApiClient(api_url, token)
+
+    def clipped(names):
+        try:
+            return {v for v, ok in asker.clips_done(names)["done"].items() if ok}
+        except Exception as exc:  # noqa: BLE001 - keep them all rather than guess
+            log.warning("could not learn which camera games are clipped: %s", exc)
+            return set()
 
     def prune_cache():
         removed = prune.prune(root, cache_gb, min_free_gb=min_free_gb,
                               recording_days=recording_days,
-                              cams_root=cams_root, camera_days=camera_days)
+                              cams_root=cams_root, camera_days=camera_days,
+                              camera_max_days=camera_max_days, clipped=clipped)
         if removed:
             log.info("pruned %d cached media files", len(removed))
 

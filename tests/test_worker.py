@@ -647,6 +647,39 @@ class TestBuildingTheLiveLane:
                                     probe=lambda p: None)
         assert worker.classify_error(got.value) == "transient"
 
+    def test_the_live_prune_asks_the_api_what_is_clipped(self, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        monkeypatch.setenv("WORKER_CAMERA_DAYS", "1")
+        monkeypatch.setenv("WORKER_CAMERA_MAX_DAYS", "3")
+        monkeypatch.setattr(worker.prune, "prune",
+                            lambda root, gb, **kw: calls.append(kw) or [])
+        monkeypatch.setattr(worker.ApiClient, "clips_done",
+                            lambda api, vids: {"done": {"a": True, "b": False}})
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False, cache_gb=10.0)
+        got.manager.prune()
+        (kw,) = calls
+        assert (kw["camera_days"], kw["camera_max_days"]) == (1.0, 3.0)
+        assert kw["clipped"](["a", "b"]) == {"a"}
+
+    def test_an_unreachable_api_means_nothing_is_clipped(self, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        monkeypatch.setattr(worker.prune, "prune",
+                            lambda root, gb, **kw: calls.append(kw) or [])
+
+        def down(api, vids):
+            raise OSError("connection refused")
+
+        monkeypatch.setattr(worker.ApiClient, "clips_done", down)
+        got = worker.build_live("http://api", "t", "home", root=tmp_path, weights=None,
+                                start=False, cache_gb=10.0)
+        got.manager.prune()
+        assert calls[0]["clipped"](["a"]) == set()
+
     def test_the_harvest_settings_reach_the_lane(self, monkeypatch, tmp_path):
         from curling_score import fpframes
 
@@ -667,8 +700,11 @@ class TestBuildingTheLiveLane:
                                 start=False, cache_gb=300.0, min_free_gb=40.0,
                                 recording_days=7.0)
         got.manager.prune()
-        assert calls == [(300.0, {"min_free_gb": 40.0, "recording_days": 7.0,
-                                  "cams_root": None, "camera_days": 3.0})]
+        (gb, kw), = calls
+        assert callable(kw.pop("clipped"))
+        assert (gb, kw) == (300.0, {"min_free_gb": 40.0, "recording_days": 7.0,
+                                    "cams_root": None, "camera_days": 3.0,
+                                    "camera_max_days": 3.0})
 
 
 class TestTheWorkerOutlivesItsLiveLane:
@@ -855,3 +891,20 @@ class TestACameraGameReadAgain:
         assert worker.vod_claim() == {"kinds": ["vod", "camera_vod"], "cameras": True}
         monkeypatch.setenv("WORKER_CAMERAS", "0")
         assert worker.vod_claim() == {"kinds": ["vod"]}
+
+
+def test_an_idle_worker_prunes_the_cameras_hourly(tmp_path, monkeypatch):
+    pruned = []
+
+    class Lane:
+        def busy(self):
+            return False
+
+        class manager:  # noqa: N801 - stands in for LiveManager
+            prune = staticmethod(lambda: pruned.append(1))
+
+    api = FakeApi([])
+    monkeypatch.setattr(worker, "vod_claim", lambda: {"kinds": ["vod"]})
+    worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
+                       cache_gb=1.0, sleep=lambda s: None, once=True, live=Lane())
+    assert pruned == [1]
