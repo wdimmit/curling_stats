@@ -168,13 +168,17 @@ def camera_game_fields(repo, run, now: datetime) -> dict:
                               if run.published_at is not None else None)
     floor, pending = start, False
     prev = repo.get_run(run.prev_run_id) if run.prev_run_id else None
-    if prev is not None and prev.source == "cameras" and prev.status != "failed":
+    if prev is not None and prev.source == "cameras" and prev.status in _CAMERA_GOING:
         if prev.own_until is not None:
             floor = prev.own_until
         elif run.opened_at is None or now < run.opened_at + timedelta(seconds=FLOOR_WAIT_S):
             floor, pending = None, True
+    elif prev is not None and prev.own_until is not None:
+        floor = prev.own_until          # done, and it said
+    # A game before that finished (or failed) without saying has no word to give.
     return {"analysis_from": iso(start), "handoff_at": iso(run.handoff_at),
-            "floor_at": iso(floor), "floor_pending": pending}
+            "floor_at": iso(floor), "floor_pending": pending,
+            "stream_ended_at": iso(run.stream_ended_at)}
 
 
 def _sheet_reader(repo, sheet, but: str | None = None) -> Run | None:
@@ -295,7 +299,18 @@ def standbys(repo, *, processing_version: str, now: datetime,
             if (sheet not in camera_sheets or now < at - timedelta(seconds=LOOKAHEAD_S)
                     or now - at >= timedelta(seconds=STANDBY_MAX_S) or _expected(repo, vid)):
                 continue
+            # A standby already waiting on the sheet for this playlist (its
+            # window opened before the club listed the stream) is this one.
+            waiting = next((r for r in _waiting_standbys(repo)
+                            if r.playlist_id == pl.playlist_id and r.sheet == sheet
+                            and r.expected_video_id is None), None)
+            if waiting is not None:
+                repo.update_run(waiting.id, expected_video_id=vid, opened_at=now)
+                continue
+            # Only a game is the game before: a standby has nothing to say.
             prev = _sheet_reader(repo, sheet)
+            if prev is not None and prev.kind != "live":
+                prev = None
             if prev is None and camera_games(repo) >= camera_max_sheets:
                 continue
             run = Run(id=slug.new_run_id(),

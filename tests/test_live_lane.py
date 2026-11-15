@@ -177,7 +177,8 @@ class TestTheManager:
     def test_it_claims_live_jobs_up_to_its_limit_and_records_them(self):
         api = Api([live_job(1), live_job(2), live_job(3)])
         m, _ = manager(api, max_streams=2)
-        m.poll_once()
+        for _ in range(3):                  # one a poll
+            m.poll_once()
         assert [s.job["id"] for s in m.streams()] == ["j_1", "j_2"]
         assert all(s.recorder.started for s in m.streams())
         assert set(map(tuple, api.claims)) == {("live",)}
@@ -192,6 +193,7 @@ class TestTheManager:
     def test_it_keeps_every_live_lease_alive(self):
         api = Api([live_job(1), live_job(2)])
         m, t = manager(api)
+        m.poll_once()
         m.poll_once()
         api.progress_calls.clear()
         t[0] = 30.0
@@ -1525,6 +1527,18 @@ class TestKeepingAGameFromAStandby:
         assert meta["trim_pending"] is True and meta["trim_by"] == "ryzen"
         assert pruned
 
+    def test_its_kept_files_begin_at_its_floor(self, tmp_path, monkeypatch):
+        later = []
+        cuts = []
+        m, cams = self.standby_manager(tmp_path, monkeypatch,
+                                       lambda d, cut: cuts.append(cut) or cut, later.append)
+        (s,) = m.streams()
+        s.session = SimpleNamespace(floor_s=5000.0)
+        m.finish(s)
+        for fn in later:
+            fn()
+        assert cuts == [5000.0]
+
     def test_a_game_recorded_from_its_claim_is_not_cut(self, tmp_path, monkeypatch):
         from curling_score.cameras import trim
 
@@ -1678,4 +1692,79 @@ def test_own_until_is_sent_once():
     for k in range(1, 4):
         t[0] = 61.0 * k
         m.poll_once()
+    assert api.extras == [("j_3", {"own_until": iso(WALL0 + 100.0)})]
+
+
+
+class TestTheReviewFixes:
+    def camera_stream(self, **handoff):
+        job = {**camera_job(3), **handoff}
+        st = manager_mod.Stream(job=job, recorder=CamRecorder(job), aligner=Aligned(None))
+        st.handoff = dict(handoff)
+        return st
+
+    def test_own_until_is_known_as_soon_as_decided(self):
+        api = Api()
+        s = self.camera_stream()
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.step()
+        s.session.own_until_s = 100.0
+        ln.step()
+        assert s.own_until_wall == pytest.approx(WALL0 + 100.0)
+
+    def test_a_game_that_found_its_end_stops_recording_before_its_stream_ends(self):
+        api = Api()
+        s = self.camera_stream()
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.step()
+        s.session.own_until_s = 100.0                 # head 600 >= 100 + the margin
+        ln.step()
+        assert s.recorder.finished_stream == 1 and not s.stop_requested
+
+    def test_the_stream_end_comes_from_the_api(self):
+        api = Api()
+        s = self.camera_stream(stream_ended_at=iso(WALL0 + 500.0))
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=99)})
+        ln.step()
+        s.stop_requested = True
+        ln.step()
+        assert [o["stream_end_s"] for o in s.session.ownership
+                if "stream_end_s" in o] == [pytest.approx(500.0)]
+
+    def test_complete_carries_own_until(self):
+        api = Api()
+        s = self.camera_stream()
+        ln, _, _ = lane(api, [s], {"j_3": lambda st, pub: OwnedSession(st, pub, ends=1)})
+        ln.step()
+        s.own_until_wall = WALL0 + 100.0
+        while ln.busy():
+            ln.step()
+        assert api.completed[-1][1]["own_until"] == iso(WALL0 + 100.0)
+
+
+def test_a_worker_claims_one_live_job_a_poll():
+    api = Api([camera_job(3), camera_job(4), camera_job(5)])
+    m = manager_mod.LiveManager(
+        api, "ryzen", model_id="m", gpu=None, root=None, kinds=("camera_live",), cameras=True,
+        make_recorder=lambda job: CamRecorder(job), make_aligner=lambda job, rec: Aligned())
+    m.poll_once()
+    assert len(m.streams()) == 1
+    m.poll_once()
+    assert len(m.streams()) == 2
+
+
+def test_own_until_is_sent_at_once():
+    api = Api([camera_job(3)])
+    t = [0.0]
+    m = manager_mod.LiveManager(
+        api, "ryzen", model_id="m", gpu=None, root=None, clock=lambda: t[0],
+        kinds=("camera_live",), cameras=True, make_recorder=lambda job: CamRecorder(job),
+        make_aligner=lambda job, rec: Aligned())
+    m.poll_once()
+    t[0] = 61.0
+    m.poll_once()                      # a heartbeat with nothing to say
+    (s,) = m.streams()
+    s.own_until_wall = WALL0 + 100.0
+    t[0] = 70.0                        # well inside the next minute
+    m.poll_once()
     assert api.extras == [("j_3", {"own_until": iso(WALL0 + 100.0)})]

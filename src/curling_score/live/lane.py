@@ -82,15 +82,28 @@ class LiveLane:
             pending = bool(h.get("floor_pending"))
             own(floor_s=None if pending else cam(h.get("floor_at")), floor_pending=pending,
                 handoff_s=cam(h.get("handoff_at")))
-        if stream.stream_finished or not stream.stop_requested:
+        # Its span's end is said as soon as it is found: the next game on the
+        # sheet waits for it (the manager's heartbeat, and the completion).
+        until = getattr(session, "own_until_s", None)
+        if until is not None and wall is not None and stream.own_until_wall is None:
+            stream.own_until_wall = wall + until
+        if stream.stream_finished:
+            return
+        if until is not None and rec.head_s() >= until + FINISH_MARGIN_S:
+            # Its game is over (the next opened, then a changeover): the
+            # cameras are the next game's now, whatever its stream still shows.
+            stream.stream_finished = True
+            log.info("live job %s: its game's span of the sheet is over; recording finished",
+                     stream.job["id"])
+            rec.finish_stream()
+            return
+        if not stream.stop_requested:
             return
         if stream.stop_seen_at is None:
             stream.stop_seen_at = self.clock()
             if own is not None:
-                own(stream_end_s=rec.head_s())
-        until = getattr(session, "own_until_s", None)
-        if until is not None and wall is not None and stream.own_until_wall is None:
-            stream.own_until_wall = wall + until
+                ended = cam((stream.handoff or {}).get("stream_ended_at"))
+                own(stream_end_s=ended if ended is not None else rec.head_s())
         deciding = getattr(session, "deciding", lambda: False)()
         overrun = self.clock() - stream.stop_seen_at >= OVERRUN_MAX_S
         if not overrun and (deciding or (until is not None
@@ -309,10 +322,17 @@ class LiveLane:
             return self._complete_practice(stream)
         job, doc = stream.job, stream.last_doc or {"games": [], "live": {"recorded_s": 0}}
         try:
-            self.api.complete(job["id"], self.worker_id, {
-                "games": _games(doc), "title": job.get("title"),
-                "format": job.get("format") or "fours", "sheet": _sheet(job),
-                "duration_s": doc["live"]["recorded_s"]})
+            payload = {"games": _games(doc), "title": job.get("title"),
+                       "format": job.get("format") or "fours", "sheet": _sheet(job),
+                       "duration_s": doc["live"]["recorded_s"]}
+            if stream.own_until_wall is not None:
+                # Where its game's span of the sheet ended, again: a heartbeat
+                # may not have said it before the game was done.
+                from datetime import datetime, timezone
+
+                payload["own_until"] = datetime.fromtimestamp(
+                    stream.own_until_wall, timezone.utc).isoformat()
+            self.api.complete(job["id"], self.worker_id, payload)
         except Lost:
             log.warning("live job %s was taken away before it completed", job["id"])
         except Exception as exc:  # noqa: BLE001 - try again shortly

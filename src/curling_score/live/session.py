@@ -339,6 +339,8 @@ class LiveSession:
     # --- profile and ends -----------------------------------------------------
 
     def _extend_profile(self):
+        if self.own_until_s is not None:
+            return                # nothing past its own span is read again
         head = self.recording.head_s()
         if (self.profiled_to is not None and not self.recording.ended()
                 and head - self.profiled_to < PROFILE_EVERY_S):

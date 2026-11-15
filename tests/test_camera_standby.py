@@ -330,3 +330,16 @@ class TestLookahead:
         standbys(repo, later(THU_7PM, -10), cap=1)
         assert len(waiting(repo)) == 1
         assert playlists.camera_games(repo) == 1
+
+
+    def test_a_waiting_window_standby_is_adopted_not_counted_as_the_game_before(self):
+        repo = setup()
+        standbys(repo)                                   # the window opens, 18:00
+        sheet3 = [r for r in waiting(repo) if r.sheet == 3][0]
+        upcoming(repo)                                   # the club lists 19:00 late
+        standbys(repo, later(THU_7PM, -10))
+        runs = [r for r in waiting(repo) if r.sheet == 3]
+        assert [r.id for r in runs] == [sheet3.id]
+        got = repo.get_run(sheet3.id)
+        assert (got.expected_video_id, got.opened_at, got.prev_run_id) == \
+            ("up3", later(THU_7PM, -10), None)

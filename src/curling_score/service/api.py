@@ -3538,6 +3538,13 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         t = now()
         games = body.get("games") or []
         title = body.get("title", run.title)
+        if body.get("own_until") and run.own_until is None:
+            # Where its game's span of the sheet ended, if a heartbeat did not
+            # say it: the next game on the sheet is read from there.
+            try:
+                repo.update_run(run.id, own_until=datetime.fromisoformat(str(body["own_until"])))
+            except ValueError:
+                log.warning("job %s completed with an unreadable own_until", job.id)
         repo.update_run(run.id, status="ready", ready_at=t, games=games,
                         title=title,
                         # A label somebody set, or a playlist gave, outranks a

@@ -326,6 +326,11 @@ class LiveManager:
         # that is kept. Cut on the keeping thread -- it copies gigabytes. Until
         # it is, the clips worker leaves the files alone (trim.PENDING).
         cut = analysis_start_s(stream.job, rec)
+        # Only its own span of the sheet: the game before's end is not kept
+        # with it (a reprocess would read it).
+        floor = getattr(stream.session, "floor_s", None)
+        if isinstance(floor, (int, float)) and floor > cut:
+            cut = float(floor)
         sheet = int(stream.job["sheet"])
         meta = {"sheet": sheet, "wall_started": rec.wall_started, "clock": clock,
                 "kept_at": time.time()}
@@ -385,17 +390,18 @@ class LiveManager:
     # --- the thread -----------------------------------------------------------
 
     def poll_once(self):
-        while len(self.streams()) < self.max_streams:
+        # One a poll: two workers then share a draw opened all at once (each
+        # sheet's next game, playlists.standbys) rather than one taking it.
+        if len(self.streams()) < self.max_streams:
+            job = None
             try:
                 job = self.api.claim(self.worker_id, self.model_id, self.gpu,
                                      kinds=list(self.kinds),
                                      **({"cameras": True} if self.cameras else {}))
             except Exception as exc:  # noqa: BLE001 - the API may be down; next poll
                 log.warning("live claim failed: %s", exc)
-                break
-            if job is None:
-                break
-            self._begin(job)
+            if job is not None:
+                self._begin(job)
         for stream in self.streams():
             self._keep(stream)
 
@@ -476,7 +482,10 @@ class LiveManager:
             return
         except Exception:  # noqa: BLE001 - a bad check must not stop the others
             log.exception("checking the recorder of %s", stream.job["id"])
-        if stream.lost or self.clock() - stream.last_beat < self.heartbeat_s:
+        # A game's span found to end goes to the API at once: the next game
+        # on its sheet waits for it.
+        telling = stream.own_until_wall is not None and not stream.own_until_sent
+        if stream.lost or (self.clock() - stream.last_beat < self.heartbeat_s and not telling):
             return
         head = getattr(stream.recorder, "head_s", lambda: 0.0)()
         ends = sum(len(g["ends"]) for g in (stream.last_doc or {}).get("games", []))

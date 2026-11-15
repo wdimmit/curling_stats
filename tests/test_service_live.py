@@ -403,3 +403,21 @@ class TestASheetsGamesInARow:
             world["clock"].advance(45 * 60 + 1)
         game = self.beat(world)["game"]
         assert (game["floor_pending"], game["floor_at"]) == (False, T0.isoformat())
+
+
+    def test_a_finished_earlier_game_with_no_word_lets_the_later_go(self, world):
+        add_camera_run(world, run_id="r_A", job_id="j_A")
+        add_camera_run(world, opened_at=T0, prev_run_id="r_A")
+        camera_claim(world, ["camera_live"])
+        camera_claim(world, ["camera_live"])
+        world["repo"].update_run("r_A", status="ready")
+        game = self.beat(world)["game"]
+        assert (game["floor_pending"], game["floor_at"]) == (False, T0.isoformat())
+
+    def test_the_heartbeat_says_when_its_stream_ended(self, world):
+        add_camera_run(world)
+        camera_claim(world, ["camera_live"])
+        assert self.beat(world)["game"]["stream_ended_at"] is None
+        world["repo"].update_run("r_cam", stream_ended_at=T0 + timedelta(hours=2))
+        assert self.beat(world)["game"]["stream_ended_at"] == \
+            (T0 + timedelta(hours=2)).isoformat()
