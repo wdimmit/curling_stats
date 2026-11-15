@@ -143,9 +143,10 @@ class ApiClient:
                           timeout=PROGRESS_TIMEOUT_S)
 
     # The clips worker's queue (service/clipworker.py).
-    def claim_clips(self, worker_id):
+    def claim_clips(self, worker_id, mode="ask"):
         r = self._http.post(f"{self.base}/api/worker/clips/claim", headers=self._headers,
-                            json={"worker_id": worker_id, "version": version.PIPELINE_VERSION})
+                            json={"worker_id": worker_id, "version": version.PIPELINE_VERSION,
+                                  "mode": mode})
         if r.status_code == 204:
             return None
         r.raise_for_status()

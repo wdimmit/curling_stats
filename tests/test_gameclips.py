@@ -506,3 +506,50 @@ class TestLater:
         queued(repo, ["1.2.13"], state="running")
         assert not gameclips.later(repo, repo.get_clip_job("cj_x"), run, "failed",
                                    T + timedelta(minutes=5))
+
+
+def auto_job(repo, id="ca_r1_1.2", run_id="r1", at=T, state="queued", rocks=("1.2.13",)):
+    repo.put_clip_job(ClipJob(id=id, play_id="", user_id=gameclips.AUTO_USER, source_id="s1",
+                              run_id=run_id, video_id="VID", state=state, created_at=at,
+                              run_after=at, spec={"rocks": [{"name": n} for n in rocks]}))
+
+
+class TestTheAutoTier:
+    def test_an_ask_claim_never_takes_an_auto_job(self):
+        repo, _, _ = world()
+        auto_job(repo)
+        assert gameclips.claim(repo, "w", T + timedelta(seconds=1), 600) is None
+        assert repo.get_clip_job("ca_r1_1.2").state == "queued"
+
+    def test_an_auto_claim_takes_only_auto_jobs_oldest_first(self):
+        repo, _, _ = world()
+        queued(repo, ["1.1.1"], id="cj_batch")
+        auto_job(repo, id="ca_r1_1.3", at=T + timedelta(seconds=5))
+        auto_job(repo, id="ca_r1_1.2", at=T)
+        now = T + timedelta(seconds=10)
+        assert gameclips.claim(repo, "w", now, 600, mode="auto").id == "ca_r1_1.2"
+        assert gameclips.claim(repo, "w", now, 600, mode="auto").id == "ca_r1_1.3"
+        assert gameclips.claim(repo, "w", now, 600, mode="auto") is None
+        assert gameclips.claim(repo, "w", now, 600).id == "cj_batch"
+
+    def test_auto_jobs_do_not_count_ahead_of_a_shot(self):
+        repo, run, _ = world()
+        for i in range(5):
+            auto_job(repo, id=f"ca_r1_1.{i}", state="running")
+        auto_job(repo, id="ca_r1_2.1")
+        spec = gameclips.find_rock(a_doc([shot(13, "red", 4)]), "1.2.13")
+        got = gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T + timedelta(seconds=1))
+        assert got == {"state": "queued", "ahead": 0}
+
+    def test_recording_now_sees_live_standby_and_practice_runs(self):
+        repo = MemoryRepo()
+        repo.put_run(Run(id="a", video_id="A", processing_version="p", status="ready",
+                         created_at=T, kind="live", source="cameras"))
+        repo.put_run(Run(id="v", video_id="V", processing_version="p", status="processing",
+                         created_at=T, kind="vod"))
+        assert not gameclips.recording_now(repo)
+        for kind, status in (("live", "live"), ("standby", "queued"), ("practice", "processing")):
+            r = MemoryRepo()
+            r.put_run(Run(id="x", video_id="X", processing_version="p", status=status,
+                          created_at=T, kind=kind, source="cameras"))
+            assert gameclips.recording_now(r), (kind, status)

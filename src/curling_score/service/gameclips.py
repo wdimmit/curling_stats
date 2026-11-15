@@ -163,18 +163,43 @@ def shot_expired(run, now) -> bool:
     return now - max(stamps) > timedelta(days=SHOT_CLIP_DAYS)
 
 
+# The clip jobs a camera game's every delivery is cut by (`queue_auto`): who
+# asked for them. They come after anything a person asked for, and are cut
+# only while nothing is being recorded (`recording_now`).
+AUTO_USER = "auto"
+# The runs whose recording is going on: what an auto job waits for.
+_RECORDING_STATUS = ("queued", "processing", "live")
+_RECORDING_KINDS = ("live", "standby", "practice")
+
+
+def is_auto(job) -> bool:
+    return job.user_id == AUTO_USER
+
+
+def _tier(job) -> int:
+    # Somebody waiting on one shot, then a play's batch, then the auto pass.
+    return 2 if is_auto(job) else (1 if job.play_id else 0)
+
+
 def _claim_order(job):
-    # Somebody waiting on one shot comes before a play's batch.
-    return (bool(job.play_id), job.run_after, job.created_at)
+    return (_tier(job), job.run_after, job.created_at)
+
+
+def recording_now(repo) -> bool:
+    """Whether a league game, a standby or a practice session is being
+    recorded or read: the box's CPU is theirs, and auto jobs wait."""
+    return any(r.kind in _RECORDING_KINDS for status in _RECORDING_STATUS
+               for r in repo.list_runs(status=status, limit=500))
 
 
 def queue_ahead(repo, job, now) -> int:
     """How many clip jobs the worker will take before ``job``, the one it
-    is cutting now among them."""
-    queued = sorted((j for j in repo.clip_jobs_in_state("queued") if j.run_after <= now),
-                    key=_claim_order)
+    is cutting now among them. The auto pass has loops of its own, and comes
+    after everything a person asked for: none of it is ahead."""
+    queued = sorted((j for j in repo.clip_jobs_in_state("queued")
+                     if j.run_after <= now and not is_auto(j)), key=_claim_order)
     before = next((i for i, j in enumerate(queued) if j.id == job.id), len(queued))
-    return before + len(repo.clip_jobs_in_state("running"))
+    return before + sum(1 for j in repo.clip_jobs_in_state("running") if not is_auto(j))
 
 
 def shot_state(repo, run, name: str, now) -> dict:
@@ -270,9 +295,10 @@ def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now, *,
     return state_for(repo, play.id, run)
 
 
-def claim(repo, worker_id: str, now, lease_s: float):
+def claim(repo, worker_id: str, now, lease_s: float, *, mode: str = "ask"):
     """The next clip job for the clips worker, or None: a shot somebody
-    asked for first, then the plays' batches, oldest first.
+    asked for first, then the plays' batches, oldest first. ``mode="auto"``
+    is the auto pass's loops: its jobs alone, and never another's.
 
     A lease that ran out puts its job back (or fails it, at its last try). A
     play's batch whose game is still live waits: its video reaches a cache
@@ -286,8 +312,9 @@ def claim(repo, worker_id: str, now, lease_s: float):
     for job in repo.clip_jobs_in_state("running"):
         if job.lease_expires_at is not None and job.lease_expires_at < now:
             _put_back(repo, job, now, "the clips worker stopped answering")
-    ready = sorted((j for j in repo.clip_jobs_in_state("queued") if j.run_after <= now),
-                   key=_claim_order)
+    auto = mode == "auto"
+    ready = sorted((j for j in repo.clip_jobs_in_state("queued")
+                    if j.run_after <= now and is_auto(j) == auto), key=_claim_order)
     for job in ready:
         run = repo.get_run(job.run_id)
         if run is None:

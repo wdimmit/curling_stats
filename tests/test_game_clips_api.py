@@ -131,6 +131,33 @@ class TestTheClipsWorkersRoutes:
         r = wpost(w, "/api/worker/clips/cj_1/later", {"reason": "x"})
         assert r.status_code in (404, 409)
 
+    def test_an_auto_claim_is_refused_while_a_game_is_recorded(self, w):  # noqa: F811
+        from curling_score.service.records import Run
+
+        _, _, src = a_played_game(w)
+        run = w["repo"].get_run(w["repo"].get_source(src).current_run_id)
+        w["repo"].put_clip_job(ClipJob(
+            id="ca_x", play_id="", user_id=gameclips.AUTO_USER, source_id=src, run_id=run.id,
+            video_id=run.video_id, state="queued", created_at=T0, run_after=T0,
+            spec={"calibration": {}, "rocks": [{"name": "0.1.13", "house": "top"}]}))
+        w["repo"].put_run(Run(id="r_live", video_id="vLive", processing_version="p",
+                              status="live", created_at=T0, kind="live", source="cameras"))
+        auto = {"worker_id": W, "mode": "auto"}
+        assert w["client"].post("/api/worker/clips/claim", json=auto,
+                                headers=WORKER).status_code == 204
+        w["repo"].update_run("r_live", status="ready")
+        w["clock"].advance(61)
+        r = w["client"].post("/api/worker/clips/claim", json=auto, headers=WORKER)
+        assert r.status_code == 200 and r.json()["job"]["id"] == "ca_x"
+
+    def test_an_empty_auto_queue_does_not_quiet_the_asks(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        auto = {"worker_id": W, "mode": "auto"}
+        assert w["client"].post("/api/worker/clips/claim", json=auto,
+                                headers=WORKER).status_code == 204
+        a_clip_job(w, src)
+        assert claim(w).status_code == 200
+
     def test_a_failure_goes_back_then_gives_up(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
         _, run = a_clip_job(w, src)

@@ -191,6 +191,9 @@ SHOT_CLIP_DAY_LIMIT = 200
 # queued a clip job itself since: Firestore is asked twice a minute, not
 # twenty times, and a job queued on the other instance waits at most this.
 CLIP_QUIET_S = 30.0
+# How long an answer to "is a game or practice being recorded?" stands before
+# the auto clip pass asks again (gameclips.recording_now).
+AUTO_IDLE_CHECK_S = 60
 # The page a flag was sent from: an edit, view-only or review link.
 FLAG_PATH = re.compile(r"^/(c|s|g)/([A-Za-z0-9_-]+)/?$")
 # A YouTube playlist's id: PL..., UU..., OL... and the rest, all URL-safe.
@@ -2685,11 +2688,22 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return None
 
     # When this instance last found no clip job to hand out, until when it
-    # may say so again without asking (CLIP_QUIET_S).
-    clip_quiet = {"until": None}
+    # may say so again without asking (CLIP_QUIET_S): for the asks, and for
+    # the auto pass, each its own.
+    clip_quiet = {"ask": None, "auto": None}
+    # Whether a game or practice was being recorded when last looked, and
+    # until when that answer stands (AUTO_IDLE_CHECK_S).
+    recording_seen = {"busy": False, "until": None}
 
     def clip_queue_stirred():
-        clip_quiet["until"] = None
+        clip_quiet["ask"] = None
+        clip_quiet["auto"] = None
+
+    def box_recording(t) -> bool:
+        if recording_seen["until"] is None or t >= recording_seen["until"]:
+            recording_seen["busy"] = gameclips.recording_now(repo)
+            recording_seen["until"] = t + timedelta(seconds=AUTO_IDLE_CHECK_S)
+        return recording_seen["busy"]
 
     def ask_for_clips(play: Play, doc: dict, run: Run, again: bool = False) -> dict | None:
         """Clips of the rocks this play names in ``doc`` (service/gameclips.py),
@@ -3572,11 +3586,17 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         require_worker(authorization)
         body = await request.json()
         t = now()
-        if clip_quiet["until"] is not None and t < clip_quiet["until"]:
+        mode = "auto" if body.get("mode") == "auto" else "ask"
+        if clip_quiet[mode] is not None and t < clip_quiet[mode]:
             return Response(status_code=204)
-        job = gameclips.claim(repo, str(body.get("worker_id", "clips")), t, settings.lease_s)
+        # The auto pass cuts only while nothing is being recorded: the
+        # workers' CPU is the live games' and the practice sessions'.
+        if mode == "auto" and box_recording(t):
+            return Response(status_code=204)
+        job = gameclips.claim(repo, str(body.get("worker_id", "clips")), t, settings.lease_s,
+                              mode=mode)
         if job is None:
-            clip_quiet["until"] = t + timedelta(seconds=CLIP_QUIET_S)
+            clip_quiet[mode] = t + timedelta(seconds=CLIP_QUIET_S)
             return Response(status_code=204)
         return {"job": {"id": job.id, "run_id": job.run_id, "video_id": job.video_id,
                         "spec": job.spec, "attempt": job.attempts, "lease_s": settings.lease_s}}
