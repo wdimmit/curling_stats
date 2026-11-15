@@ -12,9 +12,10 @@ class FakeClipApi:
     def __init__(self, jobs, lost_on=None):
         self.jobs, self.lost_on = list(jobs), lost_on
         self.completed, self.failed, self.uploads, self.progress = [], [], {}, 0
-        self.later_calls = []
+        self.later_calls, self.modes = [], []
 
-    def claim_clips(self, worker_id):
+    def claim_clips(self, worker_id, mode="ask"):
+        self.modes.append(mode)
         return self.jobs.pop(0) if self.jobs else None
 
     def clip_progress(self, job_id, worker_id):
@@ -149,6 +150,7 @@ def _clip_env(monkeypatch, tmp_path, sources):
     monkeypatch.setenv("WORKER_ID", "ryzen-clips")
     monkeypatch.setenv("WORKER_CLIP_SOURCES", sources)
     monkeypatch.delenv("WORKER_CAMS", raising=False)
+    monkeypatch.delenv("CLIP_AUTO_LOOPS", raising=False)
 
 
 def test_worker_role_clips_runs_the_clips_main_and_nothing_else(tmp_path, monkeypatch):
@@ -176,6 +178,25 @@ class TestMain:
                             lambda *a, **kw: released.append("claims"))
         assert clipworker.main([]) == 0
         assert released == ["ryzen-clips", "claims"]
+
+    def test_main_starts_the_auto_loops_with_their_own_ids(self, tmp_path, monkeypatch,
+                                                         released):
+        import threading
+
+        (tmp_path / "src1" / "videos").mkdir(parents=True)
+        _clip_env(monkeypatch, tmp_path / "cache", str(tmp_path / "src1"))
+        monkeypatch.setenv("CLIP_AUTO_LOOPS", "2")
+        got, lock = set(), threading.Lock()
+
+        def loop(api, wid, **kw):
+            with lock:
+                got.add((wid, kw.get("mode", "ask")))
+
+        monkeypatch.setattr(clipworker, "run_forever", loop)
+        assert clipworker.main(["--once"]) == 0
+        assert got == {("ryzen-clips", "ask"), ("ryzen-clips-auto1", "auto"),
+                       ("ryzen-clips-auto2", "auto")}
+        assert set(released) == {"ryzen-clips", "ryzen-clips-auto1", "ryzen-clips-auto2"}
 
     def test_reads_the_environment(self, tmp_path, monkeypatch):
         got = {}
@@ -343,3 +364,12 @@ class TestCameraGames:
                             lambda api, wid, **kw: got.update(kw))
         assert clipworker.main([]) == 0
         assert got["cams"] == [tmp_path / "cams"]
+
+
+def test_an_auto_loop_says_so_when_it_claims(tmp_path):
+    api = FakeClipApi([])
+    clipworker.run_forever(api, "w-auto1", sources=[tmp_path], workdir=tmp_path,
+                           mode="auto", sleep=lambda s: None, once=True)
+    clipworker.run_forever(api, "w", sources=[tmp_path], workdir=tmp_path,
+                           sleep=lambda s: None, once=True)
+    assert api.modes == ["auto", "ask"]

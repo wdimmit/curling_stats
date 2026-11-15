@@ -15,6 +15,7 @@ import os
 import shutil
 import socket
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -116,14 +117,16 @@ def _process(job, api, worker_id, sources, cams, scratch, cut, sleep) -> dict:
     return results
 
 
-def run_forever(api, worker_id: str, *, sources, workdir, cams=(), sleep=time.sleep,
-                once=False, cut=None):
-    """Claim and cut clip jobs until stopped."""
+def run_forever(api, worker_id: str, *, sources, workdir, cams=(), mode="ask",
+                sleep=time.sleep, once=False, cut=None):
+    """Claim and cut clip jobs until stopped. ``mode="auto"`` is a loop of the
+    auto pass (service/gameclips.queue_auto): it claims only those jobs, and
+    the API hands them out only while nothing is being recorded."""
     log.info("clips worker %s: caches %s, cameras %s, scratch %s", worker_id,
              [str(s) for s in sources], [str(c) for c in cams], workdir)
     while True:
         try:
-            job = api.claim_clips(worker_id)
+            job = api.claim_clips(worker_id, mode=mode)
         except Exception as exc:  # noqa: BLE001 - the API may be down; keep trying
             log.warning("clips claim failed: %s", exc)
             job = None
@@ -165,11 +168,27 @@ def main(argv=None) -> int:
         log.error("no cache with a videos/ directory in WORKER_CLIP_SOURCES=%r; "
                   "refusing to start", os.environ.get("WORKER_CLIP_SOURCES"))
         return 2
-    api = ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"])
     worker_id = os.environ.get("WORKER_ID") or socket.gethostname()
+    once = "--once" in argv
+    loops = []
+    # The auto pass's loops, each under a name of its own so what it held is
+    # handed back at a restart, beside the one that answers people's asks.
+    for i in range(1, int(os.environ.get("CLIP_AUTO_LOOPS", "0") or 0) + 1):
+        auto_id = f"{worker_id}-auto{i}"
+        auto_api = ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"])
+        release_held(auto_api, auto_id)
+        thread = threading.Thread(
+            target=run_forever, args=(auto_api, auto_id), name=auto_id, daemon=True,
+            kwargs={"sources": sources, "workdir": root / "clips", "cams": cams,
+                    "mode": "auto", "once": once})
+        thread.start()
+        loops.append(thread)
+    api = ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"])
     release_held(api, worker_id)
     run_forever(api, worker_id, sources=sources, workdir=root / "clips", cams=cams,
-                once="--once" in argv)
+                once=once)
+    for thread in loops:
+        thread.join()
     return 0
 
 
