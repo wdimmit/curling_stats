@@ -132,12 +132,33 @@ CAMERA_WAIT_S = 15 * 60.0
 
 
 def camera_games(repo) -> int:
-    """How many league games are being read from the cameras, standbys
-    among them: what the cap (CAMERA_MAX_SHEETS) counts. A game whose stream
-    has ended, finishing its last ends, reads no camera any more."""
-    return sum(1 for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500)
-               if r.kind in ("live", "standby") and r.source == "cameras"
-               and r.stream_ended_at is None)
+    """On how many sheets league games are being read from the cameras,
+    standbys among them: what the cap (CAMERA_MAX_SHEETS) counts. Two games
+    on one sheet (the next recorded while the last finishes) are one sheet. A
+    game whose stream has ended, finishing its last ends, reads no camera any
+    more."""
+    return len({r.sheet for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500)
+                if r.kind in ("live", "standby") and r.source == "cameras"
+                and r.stream_ended_at is None})
+
+
+# A sheet's next stream is recorded from this long before its scheduled
+# start: its game may begin while the last league's stream is still on.
+LOOKAHEAD_S = 600.0
+
+
+def _sheet_reader(repo, sheet, but: str | None = None) -> Run | None:
+    """The camera game (or standby) reading the sheet's cameras now, if any."""
+    going = [r for status in _CAMERA_GOING for r in repo.list_runs(status=status, limit=500)
+             if r.sheet == sheet and r.source == "cameras" and r.kind in ("live", "standby")
+             and r.id != but]
+    return max(going, key=lambda r: r.created_at) if going else None
+
+
+def _expected(repo, video_id: str) -> bool:
+    """Whether a run is, or waits to be, this stream's game."""
+    return bool(repo.runs_for_video(video_id)) or any(
+        r.expected_video_id == video_id for r in _waiting_standbys(repo))
 
 
 def _waiting_standbys(repo) -> list:
@@ -147,15 +168,19 @@ def _waiting_standbys(repo) -> list:
     return sorted(runs, key=lambda r: r.created_at)
 
 
-def _standby_for(repo, playlist_id: str, sheet) -> Run | None:
+def _standby_for(repo, playlist_id: str, sheet, video_id: str | None = None) -> Run | None:
     """The sheet's standby for this playlist, if one is waiting and its job
-    is queued or recording."""
+    is queued or recording: the one opened for this stream first."""
+    found = []
     for r in _waiting_standbys(repo):
         if r.playlist_id == playlist_id and r.sheet == sheet:
             job = repo.job_for_run(r.id)
             if job is not None and job.state in ("queued", "running"):
-                return r
-    return None
+                found.append(r)
+    for r in found:
+        if video_id is not None and r.expected_video_id == video_id:
+            return r
+    return found[0] if found else None
 
 
 def _sheet_busy(repo, sheet, now: datetime | None = None) -> bool:
@@ -214,13 +239,48 @@ def standbys(repo, *, processing_version: str, now: datetime,
         pl = pls.get(run.playlist_id)
         if now - run.created_at >= timedelta(seconds=STANDBY_MAX_S):
             why = f"none within {STANDBY_MAX_S / 60:.0f} min of the schedule's start"
-        elif (pl is None or not pl.enabled or pl.input != "cameras"
-              or window_start(pl.schedule, now, tz) is None):
+        elif pl is None or not pl.enabled or pl.input != "cameras":
+            why = "its playlist stopped reading the cameras"
+        elif run.expected_video_id is None and window_start(pl.schedule, now, tz) is None:
+            # A standby opened for a scheduled stream keeps to its schedule,
+            # not the playlist's window.
             why = "its playlist stopped reading the cameras"
         else:
             continue
         _give_up(repo, run, now, why)
         closed.append(run.id)
+
+    # Each sheet's scheduled stream, from LOOKAHEAD_S before it: whatever the
+    # sheet's cameras are doing -- the game before may still be on, read by a
+    # second caller on each camera -- and whatever the window says.
+    for pl in pls.values():
+        if not pl.enabled or pl.input != "cameras":
+            continue
+        for up in pl.upcoming:
+            sheet, vid = up.get("sheet"), up.get("video_id")
+            try:
+                at = datetime.fromisoformat(up["scheduled_at"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if (sheet not in camera_sheets or now < at - timedelta(seconds=LOOKAHEAD_S)
+                    or now - at >= timedelta(seconds=STANDBY_MAX_S) or _expected(repo, vid)):
+                continue
+            prev = _sheet_reader(repo, sheet)
+            if prev is None and camera_games(repo) >= camera_max_sheets:
+                continue
+            run = Run(id=slug.new_run_id(),
+                      video_id=f"standby-{sheet}-{now.strftime('%Y%m%dT%H%M%S')}",
+                      processing_version=processing_version, status="queued", created_at=now,
+                      title=f"Sheet {sheet} - {pl.label} - waiting for the stream",
+                      playlist_id=pl.playlist_id, league=pl.label, kind="standby",
+                      sheet=sheet, source="cameras", expected_video_id=vid, opened_at=now,
+                      prev_run_id=None if prev is None else prev.id)
+            repo.put_run(run)
+            repo.put_job(Job(id=slug.new_job_id(), run_id=run.id, state="queued",
+                             created_at=now, run_after=now, kind="camera_standby"))
+            if prev is not None:
+                repo.update_run(prev.id, next_run_id=run.id, handoff_at=now)
+            opened.append(run.id)
 
     for pl in pls.values():
         if not pl.enabled or pl.input != "cameras":
@@ -231,8 +291,10 @@ def standbys(repo, *, processing_version: str, now: datetime,
         key = began.isoformat()
         done = list(pl.standby_sheets) if pl.standby_window == key else []
         before = list(done)
+        # A sheet whose stream is scheduled is opened for it (above).
+        scheduled = {u.get("sheet") for u in pl.upcoming}
         for sheet in sorted(camera_sheets):
-            if sheet in done:
+            if sheet in done or sheet in scheduled:
                 continue
             if _found_already(repo, pl.playlist_id, sheet, began):
                 done.append(sheet)
@@ -361,7 +423,7 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
                 # recording's ordinary run, not queued again every poll.
                 if not any(r.kind == "live" for r in repo.runs_for_video(meta.video_id)):
                     sheet = source.sheet_from_title(meta.title)
-                    standby = (_standby_for(repo, pl.playlist_id, sheet)
+                    standby = (_standby_for(repo, pl.playlist_id, sheet, meta.video_id)
                                if pl.input == "cameras" and sheet is not None else None)
                     if standby is not None:
                         _hand_over(repo, standby, meta, pl, now)

@@ -41,10 +41,11 @@ services:
       # rule) or it is charted from the recording instead.
       #
       # Practice takes its slots from the same pool. Five sessions, one a
-      # sheet, split 3/2 across the two workers, and the 6 slots hold them;
-      # camera practice needs at least 5 between the two, so keep this at 3 or
-      # more. Practice never overlaps a league, so the two never compete.
-      LIVE_MAX_STREAMS: "3"
+      # sheet, need at least 5 between the two workers. Each sheet's next game
+      # is recorded from 10 min before its scheduled start, while the last
+      # league's games finish (playlists.LOOKAHEAD_S, user 2026-11-14): two a
+      # sheet for those minutes, 10 on five sheets, so 5 a worker.
+      LIVE_MAX_STREAMS: "5"
       # Practice sessions' watches too (from LIVE_MAX_STREAMS' slots). The
       # club only runs practice ice when no league is on, so practice never
       # shares a lane with a league night; a session does pause VOD jobs.

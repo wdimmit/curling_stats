@@ -257,3 +257,76 @@ class TestBackToBackLeagues:
         poll(repo, yt, later(THU_7PM, 16), cap=5)
         run = self.game(repo, "vid3")
         assert run.source is None and repo.job_for_run(run.id).kind == "live"
+
+
+# ------------------------------------------------- lookahead: the scheduled start
+def upcoming(repo, sheet=3, vid="up3", at=THU_7PM):
+    (pl,) = repo.list_playlists()
+    repo.update_playlist(pl.id, upcoming=list(pl.upcoming) + [
+        {"video_id": vid, "sheet": sheet, "scheduled_at": at.isoformat()}])
+
+
+def camera_game(repo, sheet=3, rid="r_A", status="live"):
+    run = Run(id=rid, video_id=f"vid{rid}", processing_version="p+m", status=status,
+              created_at=later(THU_7PM, -120), kind="live", sheet=sheet, source="cameras",
+              playlist_id="PL0")
+    repo.put_run(run)
+    return run
+
+
+class TestLookahead:
+    def test_a_lookahead_standby_opens_ten_minutes_before_the_scheduled_start(self):
+        repo = setup(schedule=[])
+        upcoming(repo)
+        assert standbys(repo, later(THU_7PM, -11))["opened"] == []
+        got = standbys(repo, later(THU_7PM, -10))
+        (run,) = waiting(repo)
+        assert got["opened"] == [run.id]
+        assert (run.sheet, run.expected_video_id) == (3, "up3")
+        assert run.opened_at == later(THU_7PM, -10)
+        assert standbys(repo, later(THU_7PM, -7))["opened"] == []      # once
+
+    def test_it_opens_on_a_sheet_still_read_by_the_game_before_and_links_them(self):
+        repo = setup(schedule=[])
+        upcoming(repo)
+        a = camera_game(repo)
+        standbys(repo, later(THU_7PM, -10))
+        (b,) = waiting(repo)
+        a = repo.get_run(a.id)
+        assert (a.next_run_id, b.prev_run_id) == (b.id, a.id)
+        assert a.handoff_at == later(THU_7PM, -10)
+
+    def test_the_window_standby_skips_a_sheet_with_an_upcoming_stream(self):
+        repo = setup()
+        upcoming(repo, at=later(THU_7PM, 30))
+        standbys(repo)
+        assert [r.sheet for r in waiting(repo)] == [1, 2, 4, 5]
+
+    def test_its_stream_takes_it_over_by_the_expected_id(self):
+        repo = setup(schedule=[])
+        upcoming(repo)
+        standbys(repo, later(THU_7PM, -10))
+        (b,) = waiting(repo)
+        yt = FakeYouTube(playlists={"PL1": []})
+        stream(yt, "up3", 3)
+        poll(repo, yt, t=later(THU_7PM, 1))
+        got = repo.get_run(b.id)
+        assert (got.video_id, got.kind, got.opened_at) == ("up3", "live", later(THU_7PM, -10))
+
+    def test_a_lookahead_standby_with_no_stream_is_given_up(self):
+        repo = setup(schedule=[])
+        upcoming(repo)
+        standbys(repo, later(THU_7PM, -10))
+        (b,) = waiting(repo)
+        standbys(repo, later(THU_7PM, 30))                 # outside any window: kept
+        assert repo.get_run(b.id).status == "queued"
+        got = standbys(repo, later(THU_7PM, -10 + playlists.STANDBY_MAX_S / 60))
+        assert got["closed"] == [b.id] and repo.get_run(b.id).status == "failed"
+
+    def test_the_cap_counts_sheets_not_runs(self):
+        repo = setup(schedule=[])
+        upcoming(repo)
+        camera_game(repo)
+        standbys(repo, later(THU_7PM, -10), cap=1)
+        assert len(waiting(repo)) == 1
+        assert playlists.camera_games(repo) == 1

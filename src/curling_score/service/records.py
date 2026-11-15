@@ -77,6 +77,19 @@ class Run:
     # them finished -- the workers keep its camera files until then.
     auto_clips: list = field(default_factory=list)
     clipped_at: datetime | None = None
+    # A camera game recorded from a little before its stream's scheduled start
+    # (playlists.standbys): the stream it waits for, and when its cameras
+    # opened. A sheet's games in a row know each other: the earlier learns
+    # when the next opened (handoff_at), and says where its own game ended
+    # (own_until), from which the next is read. wall_t0 is the wall time of
+    # its video's t = 0 (the shots' links to a neighbouring stream).
+    expected_video_id: str | None = None
+    opened_at: datetime | None = None
+    prev_run_id: str | None = None
+    next_run_id: str | None = None
+    handoff_at: datetime | None = None
+    own_until: datetime | None = None
+    wall_t0: float | None = None
     revised_at: datetime | None = None
     timeline_key: str | None = None
     meta_key: str | None = None
