@@ -168,6 +168,13 @@ class ApiClient:
         return self._post(f"/api/worker/clips/{job_id}/fail",
                           {"worker_id": worker_id, "error": error})
 
+    def clips_done(self, video_ids) -> dict:
+        """Which kept camera games have had every delivery clipped."""
+        r = self._http.get(f"{self.base}/api/worker/clips/done", headers=self._headers,
+                           params={"videos": ",".join(video_ids)}, timeout=PROGRESS_TIMEOUT_S)
+        r.raise_for_status()
+        return r.json()
+
     def clip_later(self, job_id, worker_id, reason):
         return self._post(f"/api/worker/clips/{job_id}/later",
                           {"worker_id": worker_id, "reason": reason})

@@ -180,6 +180,33 @@ class TestTheClipsWorkersRoutes:
         assert auto and all(j.id.startswith(f"ca_{run.id}_") for j in auto)
         assert w["repo"].get_run(run.id).auto_clips == sorted(j.id for j in auto)
 
+    def test_the_workers_learn_which_kept_games_are_clipped(self, w):  # noqa: F811
+        from curling_score.service.records import Run
+
+        for rid, vid, clipped in (("r_a", "v1", T0), ("r_b", "v2", None)):
+            w["repo"].put_run(Run(id=rid, video_id=vid, processing_version="p", status="ready",
+                                  created_at=T0, ready_at=T0, kind="live", source="cameras",
+                                  clipped_at=clipped))
+        r = w["client"].get("/api/worker/clips/done", params={"videos": "v1,v2,v3"},
+                            headers=WORKER)
+        assert r.status_code == 200, r.text
+        assert r.json() == {"done": {"v1": True, "v2": False, "v3": False}}
+        assert w["client"].get("/api/worker/clips/done",
+                               params={"videos": "v1"}).status_code in (401, 403)
+
+    def test_an_auto_jobs_complete_marks_its_run_clipped(self, w):  # noqa: F811
+        _, _, src = a_played_game(w)
+        run = w["repo"].get_run(w["repo"].get_source(src).current_run_id)
+        w["repo"].put_clip_job(ClipJob(
+            id="ca_x", play_id="", user_id=gameclips.AUTO_USER, source_id="", run_id=run.id,
+            video_id=run.video_id, state="queued", created_at=T0, run_after=T0,
+            spec={"calibration": {}, "rocks": [{"name": "0.1.13", "house": "top"}]}))
+        w["repo"].update_run(run.id, auto_clips=["ca_x"])
+        w["client"].post("/api/worker/clips/claim", json={"worker_id": W, "mode": "auto"},
+                         headers=WORKER)
+        wpost(w, "/api/worker/clips/ca_x/complete", {"rocks": {"0.1.13": {"clip": True}}})
+        assert w["repo"].get_run(run.id).clipped_at is not None
+
     def test_a_failure_goes_back_then_gives_up(self, w):  # noqa: F811
         _, _, src = a_played_game(w)
         _, run = a_clip_job(w, src)

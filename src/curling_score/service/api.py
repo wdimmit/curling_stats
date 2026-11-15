@@ -3672,7 +3672,23 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         job = owned_clip_job(job_id, body.get("worker_id"))
         repo.update_clip_job(job.id, state="done", finished_at=now(), lease_expires_at=None,
                              rocks=gameclips.clean_results(job, body.get("rocks")))
+        note_auto_done(job.id)
         return {"ok": True}
+
+    def note_auto_done(job_id: str) -> None:
+        """An auto clip job finished: its run may now be clipped."""
+        try:
+            gameclips.note_auto_done(repo, repo.get_clip_job(job_id), now())
+        except Exception:  # noqa: BLE001 - the clip is kept either way
+            log.exception("could not note clip job %s done", job_id)
+
+    @app.get("/api/worker/clips/done")
+    def clips_done(videos: str = Query(""), authorization: str | None = Header(default=None)):
+        """Which of these kept camera games have had every delivery clipped:
+        the workers' prune keeps a game's camera files until then."""
+        require_worker(authorization)
+        names = [v for v in videos.split(",") if v][:200]
+        return {"done": {v: gameclips.clipped(repo, v) for v in names}}
 
     @app.post("/api/worker/clips/{job_id}/later")
     async def clips_later(job_id: str, request: Request,
@@ -3686,6 +3702,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                                 str(body.get("reason", ""))[:500], now())
         if again:
             clip_queue_stirred()
+        else:
+            note_auto_done(job.id)
         return {"ok": True, "again": again}
 
     @app.post("/api/worker/clips/{job_id}/fail")
@@ -3695,6 +3713,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
         body = await request.json()
         job = owned_clip_job(job_id, body.get("worker_id"))
         final = gameclips.fail(repo, job, str(body.get("error", ""))[:500], now())
+        if final:
+            note_auto_done(job.id)
         return {"ok": True, "final": final}
 
     # -------------------------------------------------------------- admin

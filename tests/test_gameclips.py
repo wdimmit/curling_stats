@@ -616,3 +616,82 @@ class TestQueueingEveryDelivery:
         assert repo.get_clip_job("ca_rb_0.1") is not None
         assert repo.get_clip_job("ca_ra_0.1").created_at == T          # asked again
         assert repo.get_clip_job("ca_rd_0.1") is None
+
+
+class TestWhatTheAutoPassCut:
+    def test_a_shot_cut_by_the_auto_pass_is_ready(self):
+        repo, run, _ = world()
+        auto_job(repo, state="done")
+        repo.update_clip_job("ca_r1_1.2", rocks={"1.2.13": {"clip": True, "burned": True}})
+        assert gameclips.shot_state(repo, run, "1.2.13", T) == {"state": "ready"}
+
+    def test_a_shot_the_auto_pass_found_gone_is_gone(self):
+        repo, run, _ = world()
+        auto_job(repo, state="done")
+        repo.update_clip_job("ca_r1_1.2", rocks={"1.2.13": {"clip": None, "reason": "video_gone"}})
+        assert gameclips.shot_state(repo, run, "1.2.13", T) == {"state": "gone"}
+
+    def test_a_queued_auto_job_still_lets_a_person_ask(self):
+        repo, run, _ = world()
+        auto_job(repo)
+        assert gameclips.shot_state(repo, run, "1.2.13", T) == {"state": "none"}
+        spec = gameclips.find_rock(a_doc([shot(13, "red", 4)]), "1.2.13")
+        got = gameclips.ask_shot(repo, run, "s1", "u2", spec, CAL, T + timedelta(seconds=1))
+        assert got["state"] == "queued"
+
+    def test_an_auto_job_from_before_the_run_was_analysed_again_is_ignored(self):
+        repo, run, _ = world()
+        auto_job(repo, state="done")
+        repo.update_clip_job("ca_r1_1.2", rocks={"1.2.13": {"clip": True}})
+        run.ready_at = T + timedelta(minutes=5)
+        assert gameclips.shot_state(repo, run, "1.2.13", T) == {"state": "none"}
+
+    def test_a_plays_rocks_cut_by_the_auto_pass_are_not_asked_for_again(self):
+        repo, run, play = world()
+        doc = a_doc([shot(13, "red", 4), shot(15, "red", 4)])
+        auto_job(repo, state="done", rocks=("1.2.13", "1.2.15"))
+        repo.update_clip_job("ca_r1_1.2", rocks={"1.2.13": {"clip": True, "burned": True},
+                                                  "1.2.15": {"clip": None, "reason": "cut_failed"}})
+        rocks = gameclips.player_rocks(doc, "red", 4)
+        got = gameclips.ensure(repo, play, run, rocks, CAL, T + timedelta(seconds=1))
+        assert got["rocks"]["1.2.13"]["clip"] is True
+        queued = [j for j in repo.clip_jobs_in_state("queued") if j.play_id == "p1"]
+        assert [r["name"] for j in queued for r in j.spec["rocks"]] == ["1.2.15"]
+        # and the page's later look at its clips still sees it
+        assert gameclips.state_for(repo, "p1", run)["rocks"]["1.2.13"]["clip"] is True
+
+
+class TestARunSaysWhenItIsClipped:
+    def setup(self, states):
+        repo, run, _ = world()
+        ids = []
+        for i, state in enumerate(states):
+            auto_job(repo, id=f"ca_r1_0.{i + 1}", state=state)
+            ids.append(f"ca_r1_0.{i + 1}")
+        repo.update_run("r1", auto_clips=ids)
+        return repo
+
+    def test_the_last_auto_job_done_marks_the_run_clipped(self):
+        repo = self.setup(["done", "failed", "done"])
+        assert gameclips.note_auto_done(repo, repo.get_clip_job("ca_r1_0.3"), T)
+        assert repo.get_run("r1").clipped_at == T
+
+    def test_one_auto_job_still_queued_leaves_it_unclipped(self):
+        repo = self.setup(["done", "queued"])
+        assert not gameclips.note_auto_done(repo, repo.get_clip_job("ca_r1_0.1"), T)
+        assert repo.get_run("r1").clipped_at is None
+
+    def test_a_shot_job_says_nothing_of_it(self):
+        repo = self.setup(["done"])
+        repo.put_clip_job(ClipJob(id="cs_r1_0.1.1", play_id="", user_id="u", source_id="s",
+                                  run_id="r1", video_id="VID", state="done", created_at=T,
+                                  run_after=T, spec={"rocks": []}))
+        assert not gameclips.note_auto_done(repo, repo.get_clip_job("cs_r1_0.1.1"), T)
+
+    def test_asking_again_makes_it_unclipped(self):
+        repo, run, _, _ = camera_world()
+        repo.update_run("r1", clipped_at=T)
+        doc = camera_doc([{"index": 0, "ends": [{"number": 1, "house": "top",
+                                                 "shots": [shot(1, "red", 1)]}]}])
+        gameclips.queue_auto(repo, run, doc, T + timedelta(hours=1))
+        assert repo.get_run("r1").clipped_at is None

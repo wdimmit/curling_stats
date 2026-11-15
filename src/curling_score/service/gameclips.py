@@ -210,8 +210,13 @@ def shot_state(repo, run, name: str, now) -> dict:
     asked for), ``queued`` (with how many are ``ahead``), ``cutting``,
     ``ready``, ``gone`` (the video has left every cache) or ``failed`` (with
     its ``reason``). A job from before the run was last analysed is none."""
+    made = _auto_result(repo, run, name)
+    if (made or {}).get("clip") is True:
+        return {"state": "ready"}
     job = repo.get_clip_job(shot_job_id(run.id, name))
     if job is None or (run.ready_at is not None and job.created_at < run.ready_at):
+        if (made or {}).get("reason") == "video_gone":
+            return {"state": "gone"}
         return {"state": "none"}
     if job.state == "queued":
         return {"state": "queued", "ahead": queue_ahead(repo, job, now)}
@@ -289,8 +294,21 @@ def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now, *,
     state = state_for(repo, play.id, run)
     todo = [r for r in rocks if r["name"] not in state["rocks"]
             or (again and recut(state, r["name"]))]
+    # Rocks a shot ask or the auto pass has cut already (the same file) are
+    # this play's too: kept as a batch that is done, so every later look at
+    # its clips sees them, and none is asked for again once the camera files
+    # are gone.
+    elsewhere = cut_elsewhere(repo, run, [r["name"] for r in todo])
+    if elsewhere:
+        repo.put_clip_job(ClipJob(
+            id=slug.new_slug(slug.SHORT_BYTES, "cj_"), play_id=play.id, user_id=play.user_id,
+            source_id=play.source_id, run_id=run.id, video_id=run.video_id, state="done",
+            created_at=now, run_after=now, finished_at=now,
+            spec=_spec(calibration, [r for r in todo if r["name"] in elsewhere], feed),
+            rocks=elsewhere))
+        todo = [r for r in todo if r["name"] not in elsewhere]
     if not todo:
-        return state
+        return state_for(repo, play.id, run) if elsewhere else state
     repo.put_clip_job(ClipJob(
         id=slug.new_slug(slug.SHORT_BYTES, "cj_"), play_id=play.id, user_id=play.user_id,
         source_id=play.source_id, run_id=run.id, video_id=run.video_id, state="queued",
@@ -459,10 +477,7 @@ def queue_auto(repo, run, doc: dict, now) -> list[str]:
                 run_after=now + timedelta(seconds=LIVE_SETTLE_S),
                 spec=_spec(doc.get("calibration"), rocks, feed)))
             ids.append(job_id)
-    fields = {"auto_clips": ids}
-    if not ids:
-        fields["clipped_at"] = now
-    repo.update_run(run.id, **fields)
+    repo.update_run(run.id, auto_clips=ids, clipped_at=None if ids else now)
     return ids
 
 
@@ -488,3 +503,57 @@ def catch_up_auto(repo, load_doc, now, *, days: float = 2.0) -> int:
             continue
         queued += 1
     return queued
+
+
+def _valid_done(job, run) -> bool:
+    return (job is not None and job.state == "done"
+            and (run.ready_at is None or job.created_at >= run.ready_at))
+
+
+def _auto_result(repo, run, name: str) -> dict | None:
+    """What the auto pass made of the rock named ``name`` on this run of it."""
+    try:
+        job = repo.get_clip_job(auto_job_for(run.id, name))
+    except ValueError:                  # not a rock's name
+        return None
+    return (job.rocks.get(name) or None) if _valid_done(job, run) else None
+
+
+def cut_elsewhere(repo, run, names) -> dict:
+    """Of ``names``, the rocks a clip was made of on this run of their game
+    by a shot ask or the auto pass, or found gone: ``{name: result}``."""
+    out = {}
+    for name in names:
+        shot = repo.get_clip_job(shot_job_id(run.id, name))
+        got = (shot.rocks.get(name) or {}) if _valid_done(shot, run) else {}
+        if got.get("clip") is not True:
+            got = _auto_result(repo, run, name) or got
+        if got.get("clip") is True or got.get("reason") == "video_gone":
+            out[name] = got
+    return out
+
+
+def note_auto_done(repo, job, now) -> bool:
+    """After an auto job finished: when every auto job of its run has (done,
+    or given up), the run is clipped -- its camera files may go. True then."""
+    if job is None or not is_auto(job):
+        return False
+    run = repo.get_run(job.run_id)
+    if run is None or not run.auto_clips:
+        return False
+    for job_id in run.auto_clips:
+        other = repo.get_clip_job(job_id)
+        if other is not None and other.state not in ("done", "failed"):
+            return False
+    repo.update_run(run.id, clipped_at=now)
+    return True
+
+
+def clipped(repo, video_id: str) -> bool:
+    """Whether the newest camera run of ``video_id`` has had every delivery
+    clipped: its camera files are no longer needed for that."""
+    runs = [r for r in repo.runs_for_video(video_id)
+            if r.source == "cameras" and r.status == "ready" and r.ready_at is not None]
+    if not runs:
+        return False
+    return max(runs, key=lambda r: r.ready_at).clipped_at is not None
