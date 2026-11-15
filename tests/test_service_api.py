@@ -818,6 +818,9 @@ class TestCatalogueAndAdmin:
         assert "read from the club's cameras directly, with the club's agreement, " \
                "instead of the stream" in privacy
         assert "for those games the stream's video is not copied" in privacy
+        assert ("recorded from ten minutes before each game's stream is scheduled to begin"
+                in privacy)
+        assert "followed to its end, for at most 45 minutes more" in privacy
         assert ("kept on the processing computer while a clip of every shot is made, "
                 "usually about a day and never more than three days") in privacy
         assert Settings().camera_max_sheets == 2
