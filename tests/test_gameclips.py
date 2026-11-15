@@ -603,7 +603,8 @@ class TestQueueingEveryDelivery:
         def put(rid, source="cameras", auto=None, auto_at=None):
             repo.put_run(Run(id=rid, video_id=f"V{rid}", processing_version="p", status="ready",
                              created_at=ready, ready_at=ready, kind="live", source=source,
-                             sheet=3, auto_clips=[auto] if auto else []))
+                             sheet=3, auto_clips=[auto] if auto else [],
+                             timeline_key=f"runs/V{rid}/{rid}/timeline.json"))
             if auto:
                 auto_job(repo, id=auto, run_id=rid, at=auto_at, state="done")
 
@@ -650,7 +651,8 @@ class TestWhatTheAutoPassCut:
         repo, run, play = world()
         doc = a_doc([shot(13, "red", 4), shot(15, "red", 4)])
         auto_job(repo, state="done", rocks=("1.2.13", "1.2.15"))
-        repo.update_clip_job("ca_r1_1.2", rocks={"1.2.13": {"clip": True, "burned": True},
+        repo.update_clip_job("ca_r1_1.2", rocks={"1.2.13": {"clip": True, "burned": True,
+                                                             "style": gameclips.CLIP_STYLE},
                                                   "1.2.15": {"clip": None, "reason": "cut_failed"}})
         rocks = gameclips.player_rocks(doc, "red", 4)
         got = gameclips.ensure(repo, play, run, rocks, CAL, T + timedelta(seconds=1))
@@ -695,3 +697,63 @@ class TestARunSaysWhenItIsClipped:
                                                  "shots": [shot(1, "red", 1)]}]}])
         gameclips.queue_auto(repo, run, doc, T + timedelta(hours=1))
         assert repo.get_run("r1").clipped_at is None
+
+
+class TestReviewFixes:
+    def test_recording_now_ignores_a_run_left_open_for_hours(self):
+        repo = MemoryRepo()
+        now = T + timedelta(hours=7)
+        repo.put_run(Run(id="x", video_id="X", processing_version="p", status="live",
+                         created_at=T, kind="live", source="cameras"))
+        assert not gameclips.recording_now(repo, now)
+        assert gameclips.recording_now(repo, T + timedelta(hours=5))
+
+    def test_a_camera_reprocess_in_flight_is_not_clipped(self):
+        repo = MemoryRepo()
+        repo.put_run(Run(id="a", video_id="V", processing_version="p", status="ready",
+                         created_at=T, ready_at=T, kind="live", source="cameras", clipped_at=T))
+        assert gameclips.clipped(repo, "V")
+        repo.put_run(Run(id="b", video_id="V", processing_version="p", status="processing",
+                         created_at=T, kind="vod", source="cameras"))
+        assert not gameclips.clipped(repo, "V")
+
+    def test_a_shot_asks_clip_is_not_copied_into_a_play(self):
+        repo, run, play = world()
+        repo.put_clip_job(ClipJob(id=gameclips.shot_job_id("r1", "1.2.13"), play_id="",
+                                  user_id="u2", source_id="s1", run_id="r1", video_id="VID",
+                                  state="done", created_at=T, run_after=T,
+                                  spec={"rocks": [{"name": "1.2.13"}]},
+                                  rocks={"1.2.13": {"clip": True, "burned": True, "style": 2}}))
+        rocks = gameclips.player_rocks(a_doc([shot(13, "red", 4)]), "red", 4)
+        gameclips.ensure(repo, play, run, rocks, CAL, T + timedelta(seconds=1))
+        (job,) = [j for j in repo.clip_jobs_for_play("p1")]
+        assert job.state == "queued"                 # cut for the play, as before
+
+    def test_recut_asks_again_for_an_auto_clip_of_an_older_style(self):
+        repo, run, play = world()
+        auto_job(repo, state="done")
+        repo.update_clip_job("ca_r1_1.2", rocks={"1.2.13": {"clip": True, "burned": True,
+                                                             "style": 1}})
+        rocks = gameclips.player_rocks(a_doc([shot(13, "red", 4)]), "red", 4)
+        for i in range(2):
+            gameclips.ensure(repo, play, run, rocks, CAL, T + timedelta(seconds=1 + i),
+                             again=True)
+        jobs = repo.clip_jobs_for_play("p1")
+        assert [j.state for j in jobs] == ["queued"]      # no copied batch, one cut asked
+
+    def test_catch_up_skips_practice_and_runs_already_done(self):
+        repo = MemoryRepo()
+        ready = T - timedelta(hours=5)
+        repo.put_run(Run(id="rp", video_id="Vp", processing_version="p", status="ready",
+                         created_at=ready, ready_at=ready, kind="practice", source="cameras"))
+        repo.put_run(Run(id="rz", video_id="Vz", processing_version="p", status="ready",
+                         created_at=ready, ready_at=ready, kind="live", source="cameras",
+                         sheet=3, clipped_at=ready + timedelta(seconds=1)))
+
+        def doc_of(run):
+            if run.kind == "practice":
+                raise KeyError(None)
+            return {"games": []}
+
+        assert gameclips.catch_up_auto(repo, doc_of, T) == 0
+        assert repo.get_run("rz").clipped_at == ready + timedelta(seconds=1)

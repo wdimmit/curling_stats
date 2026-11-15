@@ -111,6 +111,7 @@ def expire_recordings(root, days: float, now: float | None = None) -> list[tuple
 
 # cameras/trim.PENDING: a kept game whose cut has not finished.
 _TRIM_PENDING = "trim_pending"
+_TRIM_STALE_S = 3600.0          # cameras/trim.STALE_S
 
 
 def kept_camera_games(cams_root) -> list[tuple[float, Path, int, dict]]:
@@ -201,7 +202,10 @@ def prune(root, keep_gb: float, now=None, *, min_free_gb: float = 0.0,
     left = []
     for kept_at, d, size, meta in games:
         age = now - kept_at
-        if not meta.get(_TRIM_PENDING) and (
+        # A cut in progress is spared -- for the hour a cut can take; one
+        # left pending longer was abandoned (cameras/trim.STALE_S).
+        cutting = meta.get(_TRIM_PENDING) and age < _TRIM_STALE_S
+        if not cutting and (
                 (d.name in done and camera_days is not None and age > camera_days * 86400)
                 or (max_days is not None and age > max_days * 86400)):
             drop_game(d, size, "clipped" if d.name in done else "past its days, clips lost")

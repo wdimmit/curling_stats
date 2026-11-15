@@ -2701,7 +2701,7 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
 
     def box_recording(t) -> bool:
         if recording_seen["until"] is None or t >= recording_seen["until"]:
-            recording_seen["busy"] = gameclips.recording_now(repo)
+            recording_seen["busy"] = gameclips.recording_now(repo, t)
             recording_seen["until"] = t + timedelta(seconds=AUTO_IDLE_CHECK_S)
         return recording_seen["busy"]
 

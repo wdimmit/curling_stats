@@ -188,10 +188,20 @@ def _claim_order(job):
     return (_tier(job), job.run_after, job.created_at)
 
 
-def recording_now(repo) -> bool:
+# A run that has said it is recording for longer than this was never closed
+# out (a stream nobody ended, a lease put back): it no longer holds the auto
+# pass up. A league stream runs at most ~5 h, a practice 3 (practice's
+# LEAGUE_FRESH_S is the same bargain).
+RECORDING_FRESH_S = 6 * 3600
+
+
+def recording_now(repo, now=None) -> bool:
     """Whether a league game, a standby or a practice session is being
-    recorded or read: the box's CPU is theirs, and auto jobs wait."""
-    return any(r.kind in _RECORDING_KINDS for status in _RECORDING_STATUS
+    recorded or read: the box's CPU is theirs, and auto jobs wait. Runs
+    begun more than RECORDING_FRESH_S before ``now`` are not counted."""
+    cutoff = None if now is None else now - timedelta(seconds=RECORDING_FRESH_S)
+    return any(r.kind in _RECORDING_KINDS and (cutoff is None or r.created_at >= cutoff)
+               for status in _RECORDING_STATUS
                for r in repo.list_runs(status=status, limit=500))
 
 
@@ -294,11 +304,12 @@ def ensure(repo, play, run, rocks: list[dict], calibration: dict | None, now, *,
     state = state_for(repo, play.id, run)
     todo = [r for r in rocks if r["name"] not in state["rocks"]
             or (again and recut(state, r["name"]))]
-    # Rocks a shot ask or the auto pass has cut already (the same file) are
-    # this play's too: kept as a batch that is done, so every later look at
-    # its clips sees them, and none is asked for again once the camera files
-    # are gone.
-    elsewhere = cut_elsewhere(repo, run, [r["name"] for r in todo])
+    # Rocks the auto pass has cut already in today's style (the same file)
+    # are this play's too: kept as a batch that is done, so every later look
+    # at its clips sees them, and none is asked for again once the camera
+    # files are gone. Only a camera game has an auto pass.
+    elsewhere = cut_elsewhere(repo, run, [r["name"] for r in todo
+                                          if r["name"] not in state["rocks"]])
     if elsewhere:
         repo.put_clip_job(ClipJob(
             id=slug.new_slug(slug.SHORT_BYTES, "cj_"), play_id=play.id, user_id=play.user_id,
@@ -482,6 +493,9 @@ def queue_auto(repo, run, doc: dict, now) -> list[str]:
 
 
 def _auto_asked_since_ready(repo, run) -> bool:
+    if (run.clipped_at is not None and run.ready_at is not None
+            and run.clipped_at >= run.ready_at):
+        return True
     if not run.auto_clips:
         return False
     first = repo.get_clip_job(run.auto_clips[0])
@@ -494,14 +508,15 @@ def catch_up_auto(repo, load_doc, now, *, days: float = 2.0) -> int:
     a reprocess): asked for now (`queue_auto`). How many runs."""
     queued = 0
     for run in repo.runs_ready_since(now - timedelta(days=days)):
-        if run.source != "cameras" or run.status != "ready" or _auto_asked_since_ready(repo, run):
+        if (run.source != "cameras" or run.status != "ready" or run.kind == "practice"
+                or not run.timeline_key or _auto_asked_since_ready(repo, run)):
             continue
         try:
-            queue_auto(repo, run, load_doc(run), now)
+            ids = queue_auto(repo, run, load_doc(run), now)
         except Exception:  # noqa: BLE001 - one game's trouble must not stop the rest
             log.exception("auto clips for run %s were not asked for", run.id)
             continue
-        queued += 1
+        queued += bool(ids)
     return queued
 
 
@@ -520,15 +535,15 @@ def _auto_result(repo, run, name: str) -> dict | None:
 
 
 def cut_elsewhere(repo, run, names) -> dict:
-    """Of ``names``, the rocks a clip was made of on this run of their game
-    by a shot ask or the auto pass, or found gone: ``{name: result}``."""
+    """Of ``names``, the rocks the auto pass cut on this run of their game in
+    today's style (CLIP_STYLE), or found gone: ``{name: result}``. A shot
+    somebody asked for is not counted: a play's batch cuts its own, as it
+    always has."""
     out = {}
     for name in names:
-        shot = repo.get_clip_job(shot_job_id(run.id, name))
-        got = (shot.rocks.get(name) or {}) if _valid_done(shot, run) else {}
-        if got.get("clip") is not True:
-            got = _auto_result(repo, run, name) or got
-        if got.get("clip") is True or got.get("reason") == "video_gone":
+        got = _auto_result(repo, run, name) or {}
+        if ((got.get("clip") is True and (got.get("style") or 0) >= CLIP_STYLE)
+                or got.get("reason") == "video_gone"):
             out[name] = got
     return out
 
@@ -552,8 +567,11 @@ def note_auto_done(repo, job, now) -> bool:
 def clipped(repo, video_id: str) -> bool:
     """Whether the newest camera run of ``video_id`` has had every delivery
     clipped: its camera files are no longer needed for that."""
-    runs = [r for r in repo.runs_for_video(video_id)
-            if r.source == "cameras" and r.status == "ready" and r.ready_at is not None]
+    mine = [r for r in repo.runs_for_video(video_id) if r.source == "cameras"]
+    # One reading the files again (a camera reprocess) still needs them.
+    if any(r.status in ("queued", "processing", "live") for r in mine):
+        return False
+    runs = [r for r in mine if r.status == "ready" and r.ready_at is not None]
     if not runs:
         return False
     return max(runs, key=lambda r: r.ready_at).clipped_at is not None

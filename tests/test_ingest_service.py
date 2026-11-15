@@ -642,8 +642,11 @@ class TestADayOfFootageOnceClipped:
         assert removed.index(video) < removed.index(un)
 
     def test_a_game_still_being_cut_is_not_aged_out(self, tmp_path):
-        d = kept_game_at(tmp_path / "cams", "a", 4, self.NOW, trim_pending=True)
-        self.run(tmp_path, lambda names: set(names))
+        # Kept 30 min ago, clipped, past a short camera_days: its cut is spared.
+        d = kept_game_at(tmp_path / "cams", "a", 30 / 1440, self.NOW, trim_pending=True)
+        prune.prune(tmp_path / "cache", keep_gb=1.0, now=self.NOW, cams_root=tmp_path / "cams",
+                    camera_days=0.01, camera_max_days=3, clipped=lambda names: set(names),
+                    free_bytes=10**12)
         assert d.exists()
 
     def test_kept_at_dates_a_game_not_its_directory(self, tmp_path):
@@ -653,3 +656,11 @@ class TestADayOfFootageOnceClipped:
         (d / "clock.json").write_text(_json.dumps({"kept_at": self.NOW - 4 * DAY}))
         self.run(tmp_path, None)
         assert not d.exists()
+
+
+def test_a_game_stuck_mid_cut_still_ages_out(tmp_path):
+    now = 1_800_000_000.0
+    d = kept_game_at(tmp_path / "cams", "a", 4, now, trim_pending=True)
+    prune.prune(tmp_path / "cache", keep_gb=1.0, now=now, cams_root=tmp_path / "cams",
+                camera_days=1, camera_max_days=3, clipped=None, free_bytes=10**12)
+    assert not d.exists()
