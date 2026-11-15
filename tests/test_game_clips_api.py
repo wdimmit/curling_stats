@@ -558,3 +558,52 @@ class TestPlaysClipsSave:
         got = get(w, f"/api/me/plays/{src}/clips/0.1.13").json()
         assert got["download"].endswith(f"?download=curling-{src}-e1-r13.mp4")
         assert got["url"].endswith("/clips/0.1.13.mp4")
+
+
+def test_a_camera_night_end_to_end(w):  # noqa: F811
+    """A camera game completes; its deliveries are queued; nothing is cut while
+    another game is recorded; then every end is cut, the run is clipped, the
+    workers may drop its files, and the shot's page offers the clip."""
+    from curling_score.service.records import Run
+
+    doc = played_doc()
+    for s in doc["games"][0]["ends"][0]["shots"]:
+        s["t_release_s"] = s["t_rest_s"] - 20.0
+    doc["source"] = {**doc.get("source", {}), "sheet": 3,
+                     "clock": {"kind": "cameras", "offset_s": -900.0}}
+    _, _, src = a_played_game(w, doc)
+    run = w["repo"].get_run(w["repo"].get_source(src).current_run_id)
+    w["repo"].update_run(run.id, source="cameras", sheet=3, ready_at=None, status="processing")
+    job = w["repo"].job_for_run(run.id)
+    w["repo"].update_job(job.id, state="running", worker_id=W)
+    assert w["client"].post(f"/api/worker/jobs/{job.id}/complete",
+                            json={"worker_id": W, "games": [], "format": "fours"},
+                            headers=WORKER).status_code == 200
+    auto_ids = w["repo"].get_run(run.id).auto_clips
+    assert auto_ids
+    # Another game on the ice: the auto pass waits.
+    w["repo"].put_run(Run(id="r_next", video_id="vNext", processing_version="p",
+                          status="live", created_at=T0, kind="live", source="cameras"))
+    w["clock"].advance(gameclips.LIVE_SETTLE_S + 1)
+    auto = {"worker_id": W, "mode": "auto"}
+    assert w["client"].post("/api/worker/clips/claim", json=auto,
+                            headers=WORKER).status_code == 204
+    w["repo"].update_run("r_next", status="ready")
+    w["clock"].advance(61)
+    done = 0
+    while True:
+        r = w["client"].post("/api/worker/clips/claim", json=auto, headers=WORKER)
+        if r.status_code == 204:
+            break
+        got = r.json()["job"]
+        assert got["spec"]["feed"]["sheet"] == 3
+        rocks = {rk["name"]: {"clip": True, "burned": True, "style": 2}
+                 for rk in got["spec"]["rocks"]}
+        assert wpost(w, f"/api/worker/clips/{got['id']}/complete",
+                     {"rocks": rocks}).status_code == 200
+        done += 1
+    assert done == len(auto_ids)
+    assert w["repo"].get_run(run.id).clipped_at is not None
+    assert w["client"].get("/api/worker/clips/done", params={"videos": run.video_id},
+                           headers=WORKER).json() == {"done": {run.video_id: True}}
+    assert shot(w, G.format(src)).json()["state"] == "ready"
