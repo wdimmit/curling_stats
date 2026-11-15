@@ -159,16 +159,11 @@ def main(argv=None) -> int:
     root = Path(os.environ.get("CURLING_SCORE_CACHE") or cache.default_root())
     sources = sources_from_env(os.environ.get("WORKER_CLIP_SOURCES"))
     cams = [Path(p) for p in [os.environ.get("WORKER_CAMS")] if p]
-    # A cache named but holding no videos is a mount gone wrong: every YouTube
-    # game's clips would be gone for good. Cameras alone are a clips worker
-    # with no caches named at all.
-    ok = (any((s / "videos").is_dir() for s in sources) if sources
-          else any((c / "kept").is_dir() for c in cams))
-    if not ok:
-        # Every job would be marked video_gone, for good: better not to start.
-        log.error("no cache with a videos/ directory in WORKER_CLIP_SOURCES=%r, and no "
-                  "kept cameras in WORKER_CAMS=%r; refusing to start",
-                  os.environ.get("WORKER_CLIP_SOURCES"), os.environ.get("WORKER_CAMS"))
+    if not any((s / "videos").is_dir() for s in sources):
+        # Every YouTube game's job would be marked video_gone, for good:
+        # better not to start. The cameras are read besides, never instead.
+        log.error("no cache with a videos/ directory in WORKER_CLIP_SOURCES=%r; "
+                  "refusing to start", os.environ.get("WORKER_CLIP_SOURCES"))
         return 2
     api = ApiClient(os.environ["API_URL"], os.environ["WORKER_TOKEN"])
     worker_id = os.environ.get("WORKER_ID") or socket.gethostname()

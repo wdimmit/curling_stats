@@ -362,6 +362,23 @@ class TestFindSource:
         assert (got.kind, got.path) == ("youtube", tmp_path / "videos" / "VID.mp4")
 
 
+class TestTheLayoutAGameWasReadWith:
+    def test_a_kept_game_is_cut_by_the_layout_saved_with_it(self, tmp_path):
+        from curling_score.cameras import layout
+
+        now = layout.load(3)
+        moved = [{"role": p.role, "crop": [p.crop[0] + 200, *p.crop[1:]], "rotate": p.rotate,
+                  "out": list(p.out)} for p in now.placements]
+        cams = tmp_path / "cams"
+        kept_dir(cams, extra={"layout": {"sheet": 3, "background": now.background,
+                                         "placements": moved}})
+        src = gc.find_source("VID", [], [cams], feed=FEED)
+        views = gc.source_views(src, {"left": CAM_LEFT}, {})
+        right_now = layout.load(3)
+        assert views["left"][1].crop[0] == \
+            next(p for p in right_now.placements if p.role == "long_a").crop[0] + 200
+
+
 class TestSourceViews:
     SIDES = {"left": CAM_LEFT, "right": CAM_RIGHT}
     PANELS = {"top": CAM_TOP, "bottom": CAM_BOTTOM}

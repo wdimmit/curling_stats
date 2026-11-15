@@ -229,6 +229,11 @@ class CameraFilesGone(Exception):
     """A camera game asked to be read again after its files were pruned."""
 
 
+class CameraFilesBusy(Exception):
+    """A camera game asked to be read again while its kept files are still
+    being cut where its stream began (cameras/trim.PENDING): tried again."""
+
+
 def vod_claim() -> dict:
     """What the recordings loop claims: recordings, and camera games read
     again where this worker can see the cameras' kept files (WORKER_CAMERAS=1)."""
@@ -252,6 +257,10 @@ def kept_camera_game(job: dict, cams_root, probe=None):
     if d is None or not (d / "clock.json").is_file():
         raise CameraFilesGone(f"the camera files of {vid} are no longer kept")
     kept = json.loads((d / "clock.json").read_text())
+    from curling_score.cameras import trim
+
+    if kept.get(trim.PENDING):
+        raise CameraFilesBusy(f"the camera files of {vid} are still being cut; try again soon")
     sheet = int(job.get("sheet") or kept["sheet"])
     feed = camera_feed(d, sheet)
     duration = float(probe(feed.path_for("left")).duration_s)
@@ -593,6 +602,14 @@ def build_live(api_url, token, worker_id, *, root: Path, weights,
     cams_root = Path(os.environ["WORKER_CAMS"]) if os.environ.get("WORKER_CAMS") else None
     if cams_root is not None:
         shutil.rmtree(cams_root / "live" / worker_id, ignore_errors=True)
+        # A kept game this worker was cutting when it stopped: finished or
+        # undone, so its clips can be cut (cameras/trim.recover).
+        from curling_score.cameras import trim
+
+        try:
+            trim.recover_interrupted(cams_root / "kept", worker_id)
+        except OSError as exc:
+            log.warning("could not look for interrupted cuts: %s", exc)
     camera_days = float(os.environ.get("WORKER_CAMERA_DAYS", "3"))
 
     def prune_cache():

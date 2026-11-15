@@ -51,10 +51,9 @@ class SheetLayout:
     background: str  # the bars' grey, "0xRRGGBB"
 
 
-def save(sheet_layout: SheetLayout, path, *, fit: dict | None = None) -> None:
-    """Write the layout as JSON. ``fit`` is the fitter's record of how it got
-    there (which frames, inliers, residuals); ``load`` ignores it."""
-    doc = {
+def to_record(sheet_layout: SheetLayout) -> dict:
+    """The layout as its JSON has it (`save`, `from_record`)."""
+    return {
         "sheet": sheet_layout.sheet,
         "background": sheet_layout.background,
         "placements": [
@@ -62,6 +61,24 @@ def save(sheet_layout: SheetLayout, path, *, fit: dict | None = None) -> None:
             for p in sheet_layout.placements
         ],
     }
+
+
+def from_record(doc: dict) -> SheetLayout:
+    """A layout from its JSON record (`to_record`)."""
+    return SheetLayout(
+        sheet=doc["sheet"],
+        placements=tuple(
+            Placement(p["role"], tuple(p["crop"]), p["rotate"], tuple(p["out"]))
+            for p in doc["placements"]
+        ),
+        background=doc["background"],
+    )
+
+
+def save(sheet_layout: SheetLayout, path, *, fit: dict | None = None) -> None:
+    """Write the layout as JSON. ``fit`` is the fitter's record of how it got
+    there (which frames, inliers, residuals); ``load`` ignores it."""
+    doc = to_record(sheet_layout)
     if fit is not None:
         doc["fit"] = fit
     # A rectangle per line reads better than four.
@@ -75,15 +92,7 @@ def load(sheet: int, *, root: Path = LAYOUTS) -> SheetLayout:
     if not path.exists():
         raise LookupError(
             f"no camera layout for sheet {sheet} ({path}); fit one with scripts/cameras/fit_layout.py")
-    doc = json.loads(path.read_text())
-    return SheetLayout(
-        sheet=doc["sheet"],
-        placements=tuple(
-            Placement(p["role"], tuple(p["crop"]), p["rotate"], tuple(p["out"]))
-            for p in doc["placements"]
-        ),
-        background=doc["background"],
-    )
+    return from_record(json.loads(path.read_text()))
 
 
 def filtergraphs(sheet_layout: SheetLayout, *, inputs: dict[str, int]) -> list[str]:

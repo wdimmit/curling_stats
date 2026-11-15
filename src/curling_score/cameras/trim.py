@@ -33,6 +33,12 @@ MIN_CUT_S = 1.0
 # In a kept game's clock.json while its files are still to be cut: a reader
 # (the clips worker) waits rather than read files being replaced.
 PENDING = "trim_pending"
+# Set once every file has been cut beside itself and clock.json moved to the
+# cut: from then on the cut is finished by swapping the files in, never undone.
+COMMITTING = "trim_committing"
+# An interrupted cut (its worker restarted) is recovered by the worker that
+# owned it when it starts again, or by any worker once it is this old.
+STALE_S = 3600.0
 
 
 def _write_trim(path: Path, cut_s: float) -> Path:
@@ -126,24 +132,112 @@ def clear_pending(directory) -> None:
     except (FileNotFoundError, ValueError):
         return
     if meta.pop(PENDING, None) is not None:
+        meta.pop(COMMITTING, None)
+        meta.pop("trim_by", None)
         _rewrite(meta_path, meta)
+
+
+def _read_meta(directory: Path) -> dict | None:
+    try:
+        return json.loads((directory / "clock.json").read_text())
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def _undo(directory: Path) -> None:
+    """A cut that never began swapping: its half-written files go, and the
+    game's own files -- untouched, on the clock they share -- are ready."""
+    for leftover in directory.glob("*.ts.trim"):
+        leftover.unlink(missing_ok=True)
+    clear_pending(directory)
+
+
+def _commit(directory: Path) -> None:
+    """Swap every cut file in, then say the game is ready. clock.json already
+    holds the cut's clock (COMMITTING), so this is only ever finished."""
+    for cut in sorted(directory.glob("*.ts.trim")):
+        os.replace(cut, cut.with_name(cut.name[: -len(".trim")]))
+    meta = _read_meta(directory) or {}
+    for key in (PENDING, COMMITTING, "trim_by"):
+        meta.pop(key, None)
+    _rewrite(directory / "clock.json", meta)
 
 
 def trim_kept(directory, cut_s: float) -> float:
     """A kept camera game (``<role>.ts`` and ``clock.json``) cut at ``cut_s``,
-    its clock moved with it and the cut noted (``start_trimmed_s``); its
-    ``PENDING`` flag dropped whether or not a cut was made."""
+    its clock moved with it and the cut noted (``start_trimmed_s``).
+
+    In two steps, so it can always be finished or undone (`recover`): every
+    file is cut beside itself; then clock.json takes the cut's clock and
+    COMMITTING, and the files are swapped in. A failure in the first step
+    leaves the game as it was and ready; one in the second leaves it pending
+    -- never read -- until `recover` finishes it."""
     directory = Path(directory)
-    made = trim_files(directory, cut_s)
-    if made:
-        meta_path = directory / "clock.json"
-        meta = json.loads(meta_path.read_text())
-        meta["wall_started"] = meta["wall_started"] + made
-        meta["clock"] = shift_clock(meta.get("clock"), made)
-        meta["start_trimmed_s"] = made
-        meta.pop(PENDING, None)
-        _rewrite(meta_path, meta)
-        log.info("kept cameras in %s cut at %.1f s, where the stream began", directory, made)
-    else:
+    if cut_s < MIN_CUT_S:
         clear_pending(directory)
-    return made
+        return 0.0
+    paths = sorted(directory.glob("*.ts"))
+    try:
+        for path in paths:
+            _write_trim(path, cut_s)
+    except BaseException:
+        _undo(directory)
+        raise
+    meta = _read_meta(directory) or {}
+    meta["wall_started"] = meta["wall_started"] + cut_s
+    meta["clock"] = shift_clock(meta.get("clock"), cut_s)
+    meta["start_trimmed_s"] = cut_s
+    meta[PENDING] = True
+    meta[COMMITTING] = True
+    try:
+        _rewrite(directory / "clock.json", meta)
+    except BaseException:
+        _undo(directory)
+        raise
+    _commit(directory)
+    log.info("kept cameras in %s cut at %.1f s, where the stream began", directory, cut_s)
+    return cut_s
+
+
+def recover(directory) -> str:
+    """An interrupted cut of a kept game put right: ``finished`` (it had begun
+    swapping), ``undone`` (it had not; the game is as it was) or ``none``."""
+    directory = Path(directory)
+    meta = _read_meta(directory)
+    if meta is None or not meta.get(PENDING):
+        return "none"
+    if meta.get(COMMITTING):
+        _commit(directory)
+        return "finished"
+    _undo(directory)
+    return "undone"
+
+
+def recover_interrupted(kept_root, worker_id: str, *, now=None, stale_s: float = STALE_S
+                        ) -> dict:
+    """At a worker's start, every kept game whose cut was left pending by this
+    worker (it cannot be cutting it now) or long enough ago by any, put right
+    (`recover`); ``{name: outcome}``. Another worker's cut in progress is
+    left alone."""
+    import time
+
+    now = time.time() if now is None else now
+    out = {}
+    root = Path(kept_root)
+    if not root.is_dir():
+        return out
+    for directory in sorted(p for p in root.iterdir() if p.is_dir()):
+        meta = _read_meta(directory)
+        if not meta or not meta.get(PENDING):
+            continue
+        ours = meta.get("trim_by") == worker_id
+        stale = now - float(meta.get("kept_at") or 0.0) > stale_s
+        if not (ours or stale):
+            continue
+        try:
+            out[directory.name] = recover(directory)
+        except OSError as exc:
+            log.warning("could not put right the cut of %s: %s", directory, exc)
+            continue
+        log.info("the interrupted cut of %s: %s", directory, out[directory.name])
+    return out

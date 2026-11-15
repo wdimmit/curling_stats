@@ -1204,6 +1204,9 @@ class TestKeepingACameraGame:
             ["clock.json", "house_a.ts", "house_h.ts", "long_a.ts", "long_h.ts"]
         meta = json.loads((kept / "clock.json").read_text())
         assert isinstance(meta.pop("kept_at"), float)
+        layout = meta.pop("layout")
+        assert layout["sheet"] == 3 and {p["role"] for p in layout["placements"]} == \
+            {"house_a", "house_h", "long_a", "long_h"}
         assert meta == {"sheet": 3, "wall_started": 1793900701.0, "clock": self.CLOCK}
         assert not (cams / "live" / "ryzen" / "liveVid0003").exists()
 
@@ -1482,8 +1485,16 @@ class TestKeepingAGameFromAStandby:
                                                                      monkeypatch):
         import json
 
+        from curling_score.cameras import trim
+
+        def cut_beside(path, cut_s):
+            out = path.with_name(path.name + ".trim")
+            out.write_bytes(b"cut")
+            return out
+
+        monkeypatch.setattr(trim, "_write_trim", cut_beside)
         later = []
-        m, cams = self.standby_manager(tmp_path, monkeypatch, lambda d, cut: cut, later.append)
+        m, cams = self.standby_manager(tmp_path, monkeypatch, trim.trim_kept, later.append)
         (s,) = m.streams()
         assert (s.recorder.dir / "video_id").read_text() == "liveVid0003"
         m.finish(s)
@@ -1494,17 +1505,22 @@ class TestKeepingAGameFromAStandby:
         meta = json.loads(meta_path.read_text())
         assert "trim_pending" not in meta and isinstance(meta["kept_at"], float)
 
-    def test_a_failed_trim_clears_the_pending_flag(self, tmp_path, monkeypatch):
+    def test_a_failed_trim_is_left_to_trim_and_the_disk_still_pruned(self, tmp_path,
+                                                                       monkeypatch):
         import json
 
         def broken(d, cut):
-            raise OSError("ffmpeg fell over")
+            raise OSError("No space left on device")
 
         m, cams = self.standby_manager(tmp_path, monkeypatch, broken, lambda fn: fn())
+        pruned = []
+        m.prune = lambda: pruned.append(1)
         (s,) = m.streams()
         m.finish(s)
         meta = json.loads((cams / "kept" / "liveVid0003" / "clock.json").read_text())
-        assert "trim_pending" not in meta and isinstance(meta["kept_at"], float)
+        # trim_kept says whether its files are readable; the manager does not guess.
+        assert meta["trim_pending"] is True and meta["trim_by"] == "ryzen"
+        assert pruned
 
     def test_a_game_recorded_from_its_claim_is_not_cut(self, tmp_path, monkeypatch):
         from curling_score.cameras import trim

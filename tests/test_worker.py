@@ -622,6 +622,31 @@ class TestBuildingTheLiveLane:
         worker.build_live("http://api", "t", "home", root=tmp_path, weights=None, start=False)
         assert got["cal_root"] == tmp_path
 
+    def test_its_interrupted_trims_are_recovered_at_start(self, monkeypatch, tmp_path):
+        from curling_score.cameras import trim
+
+        got = []
+        monkeypatch.setenv("WORKER_LIVE", "1")
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        monkeypatch.setattr(trim, "recover_interrupted",
+                            lambda kept, wid, **kw: got.append((kept, wid)) or {})
+        worker.build_live("http://api", "t", "home", root=tmp_path, weights=None, start=False)
+        assert got == [(tmp_path / "cams" / "kept", "home")]
+
+    def test_a_camera_game_being_cut_is_tried_again_later(self, tmp_path):
+        import json
+
+        from curling_score.cameras import trim
+
+        d = tmp_path / "kept" / "VID"
+        d.mkdir(parents=True)
+        (d / "clock.json").write_text(json.dumps(
+            {"sheet": 3, "wall_started": 1.0, "clock": None, trim.PENDING: True}))
+        with pytest.raises(worker.CameraFilesBusy) as got:
+            worker.kept_camera_game({"video_id": "VID", "sheet": 3}, tmp_path,
+                                    probe=lambda p: None)
+        assert worker.classify_error(got.value) == "transient"
+
     def test_the_harvest_settings_reach_the_lane(self, monkeypatch, tmp_path):
         from curling_score import fpframes
 

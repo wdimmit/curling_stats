@@ -51,6 +51,18 @@ def _published_at(job):
         return None
 
 
+def _layout_record(sheet: int) -> dict | None:
+    """Sheet ``sheet``'s camera layout as layout.save writes it, or None."""
+    from curling_score.cameras import layout
+
+    try:
+        sl = layout.load(sheet)
+    except (LookupError, OSError, ValueError) as exc:
+        log.warning("no layout of sheet %s to keep with its game: %s", sheet, exc)
+        return None
+    return layout.to_record(sl)
+
+
 def _name_video(recorder, video_id: str) -> None:
     """Write the game's video id into a camera recording's directory: the
     clips worker finds a game still being recorded by it, whatever the
@@ -282,10 +294,17 @@ class LiveManager:
         # is kept. Cut on the keeping thread -- it copies gigabytes. Until it
         # is, the clips worker leaves the files alone (trim.PENDING).
         cut = stream_start_s(stream.job, rec)
-        meta = {"sheet": int(stream.job["sheet"]), "wall_started": rec.wall_started,
-                "clock": clock, "kept_at": time.time()}
+        sheet = int(stream.job["sheet"])
+        meta = {"sheet": sheet, "wall_started": rec.wall_started, "clock": clock,
+                "kept_at": time.time()}
+        # The layout the game was read with: its clips are cut by it, whatever
+        # the sheet's layout says by then.
+        placed = _layout_record(sheet)
+        if placed is not None:
+            meta["layout"] = placed
         if cut >= trim.MIN_CUT_S:
             meta[trim.PENDING] = True
+            meta["trim_by"] = self.worker_id
         (dest / "clock.json").write_text(json.dumps(meta))
         log.info("kept the cameras of %s in %s", vid, dest)
 
@@ -293,12 +312,13 @@ class LiveManager:
             if cut >= trim.MIN_CUT_S:
                 try:
                     trim.trim_kept(dest, cut)
-                except Exception:  # noqa: BLE001 - kept uncut; pruned in days
+                except Exception:  # noqa: BLE001 - trim_kept leaves it ready or pending
                     log.exception("could not cut the kept cameras of %s at %.0f s", vid, cut)
-                finally:
-                    trim.clear_pending(dest)
             if self.prune is not None:
-                self.prune()
+                try:
+                    self.prune()
+                except Exception:  # noqa: BLE001
+                    log.exception("prune after keeping %s failed", vid)
 
         self.background(trim_then_prune)
 

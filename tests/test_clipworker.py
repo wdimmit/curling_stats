@@ -326,9 +326,17 @@ class TestCameraGames:
                             lambda *a, **kw: pytest.fail("it started"))
         assert clipworker.main([]) == 2
 
-    def test_starts_with_only_the_cameras(self, tmp_path, monkeypatch):
+    def test_cameras_alone_are_not_enough_to_start(self, tmp_path, monkeypatch):
         (tmp_path / "cams" / "kept").mkdir(parents=True)
         _clip_env(monkeypatch, tmp_path, "")
+        monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
+        monkeypatch.setattr(clipworker, "run_forever",
+                            lambda *a, **kw: pytest.fail("it started"))
+        assert clipworker.main([]) == 2
+
+    def test_the_cameras_reach_the_loop(self, tmp_path, monkeypatch):
+        (tmp_path / "src" / "videos").mkdir(parents=True)
+        _clip_env(monkeypatch, tmp_path, str(tmp_path / "src"))
         monkeypatch.setenv("WORKER_CAMS", str(tmp_path / "cams"))
         got = {}
         monkeypatch.setattr(clipworker, "run_forever",

@@ -174,7 +174,7 @@ CAMERA_ROLES = ("house_a", "house_h", "long_a", "long_h")
 # A kept game whose cut is still pending this long after it was kept lost
 # its cutting thread (a restart): its files are not read, and its YouTube copy
 # is used if there is one.
-TRIM_STALE_S = 3600.0
+TRIM_STALE_S = 3600.0          # cameras/trim.STALE_S: a worker recovers it then
 
 
 @dataclass(frozen=True)
@@ -191,6 +191,9 @@ class ClipSource:
     path: Path
     sheet: int | None = None
     clock: dict | None = None
+    # A kept game's layout as it was read with (live/manager), else None: the
+    # sheet's layout as it is now.
+    layout: dict | None = None
 
     def t0_at(self, v: float) -> float:
         """Where the files begin on the rocks' clock, for a rock at ``v``."""
@@ -217,7 +220,8 @@ def _kept_cameras(cams, video_id: str) -> ClipSource | None:
             log.warning("%s was left half cut: not read", directory)
             return None
         raise NotReady(f"{directory} is still being cut where its stream began")
-    return ClipSource("cameras", directory, int(meta["sheet"]), meta.get("clock"))
+    return ClipSource("cameras", directory, int(meta["sheet"]), meta.get("clock"),
+                      meta.get("layout"))
 
 
 def _live_cameras(cams, video_id: str, sheet, clock) -> ClipSource | None:
@@ -260,13 +264,15 @@ def find_source(video_id: str, roots, cams_roots=(), *, feed: dict | None = None
     raise NotReady(f"no camera files or copy of {video_id} in any cache yet")
 
 
-def _placements(sheet):
+def _placements(source: ClipSource):
     from curling_score.cameras import layout
 
     try:
-        return layout.load(int(sheet))
-    except (FileNotFoundError, LookupError, TypeError, ValueError) as exc:
-        log.warning("no layout for sheet %s: %s", sheet, exc)
+        if source.layout:
+            return layout.from_record(source.layout)
+        return layout.load(int(source.sheet))
+    except (OSError, LookupError, KeyError, TypeError, ValueError) as exc:
+        log.warning("no layout for sheet %s: %s", source.sheet, exc)
         return None
 
 
@@ -281,7 +287,7 @@ def source_views(source: ClipSource, sideviews: dict, panels: dict) -> dict:
         return {n: (source.path, r) for n, r in rects.items()}
     from curling_score.feeds.cameras import VIEW_ROLE, placement_for, view_cut
 
-    sheet_layout = _placements(source.sheet)
+    sheet_layout = _placements(source)
     if sheet_layout is None:
         return {}
     out = {}
