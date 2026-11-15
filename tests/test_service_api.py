@@ -817,7 +817,9 @@ class TestCatalogueAndAdmin:
         privacy = " ".join(world["client"].get("/privacy").text.split())
         assert "read from the club's cameras directly, with the club's agreement, " \
                "instead of the stream" in privacy
-        assert "kept on the processing computer for up to three days" in privacy
+        assert "for those games the stream's video is not copied" in privacy
+        assert ("kept on the processing computer while a clip of every shot is made, "
+                "usually about a day and never more than three days") in privacy
         assert Settings().camera_max_sheets == 2
 
     def test_the_terms_and_privacy_say_thinking_time_is_for_people_signed_in(self, world):
