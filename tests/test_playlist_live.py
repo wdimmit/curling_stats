@@ -317,3 +317,42 @@ def test_a_camera_game_is_watched_for_its_end_outside_the_schedule():
     playlists.poll(repo, yt, processing_version="p+m", now=after, tz=TZ,
                    allowed_channels={"UCclub"}, camera_sheets=ALL_SHEETS, camera_max_sheets=2)
     assert repo.get_run(run.id).stream_ended_at == after
+
+
+class TestUpcomingStreams:
+    def test_the_poll_remembers_each_sheets_upcoming_stream(self):
+        repo = MemoryRepo()
+        repo.put_playlist(watched(schedule=NIGHT, input="cameras"))
+        yt = FakeYouTube(playlists={"PL1": ["up3", "later", "nosheet"]})
+        soon = THU_7PM + timedelta(hours=2)
+        yt.add(VideoMeta("up3", "10/1 - Sheet 3 - Thursday League", "UCclub", 0.0, "upcoming",
+                         THU_7PM - timedelta(hours=10), scheduled_at=soon))
+        yt.add(VideoMeta("later", "10/8 - Sheet 4 - Thursday League", "UCclub", 0.0, "upcoming",
+                         THU_7PM, scheduled_at=THU_7PM + timedelta(days=3)))
+        yt.add(VideoMeta("nosheet", "Thursday League highlights", "UCclub", 0.0, "upcoming",
+                         THU_7PM, scheduled_at=soon))
+        poll(repo, yt)
+        (pl,) = repo.list_playlists()
+        assert pl.upcoming == [{"video_id": "up3", "sheet": 3,
+                                "scheduled_at": soon.isoformat()}]
+        assert repo.list_runs() == []
+
+    def test_a_youtube_playlist_remembers_none(self):
+        repo = MemoryRepo()
+        repo.put_playlist(watched(schedule=NIGHT, input="youtube"))
+        yt = FakeYouTube(playlists={"PL1": ["up3"]})
+        yt.add(VideoMeta("up3", "10/1 - Sheet 3 - Thursday League", "UCclub", 0.0, "upcoming",
+                         THU_7PM, scheduled_at=THU_7PM + timedelta(hours=1)))
+        poll(repo, yt)
+        assert repo.list_playlists()[0].upcoming == []
+
+    def test_a_stream_ended_takes_youtubes_end_time(self):
+        repo, yt = camera_setup(["11/5 - Sheet 3 - Thursday Morning"])
+        camera_poll(repo, yt)
+        (run,) = repo.list_runs()
+        repo.update_run(run.id, status="live")
+        ended = THU_7PM + timedelta(hours=2, seconds=4)
+        yt.add(VideoMeta("vid0", "11/5 - Sheet 3 - Thursday Morning", "UCclub", 7200.0, "none",
+                         THU_7PM, ended_at=ended))
+        camera_poll(repo, yt, t=THU_7PM + timedelta(hours=2, minutes=3))
+        assert repo.get_run(run.id).stream_ended_at == ended

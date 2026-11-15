@@ -274,13 +274,35 @@ def camera_playlists(repo) -> set:
             if r.kind == "live" and r.source == "cameras" and r.stream_ended_at is None}
 
 
-def mark_stream_ended(repo, video_id: str, now: datetime) -> None:
+def mark_stream_ended(repo, video_id: str, now: datetime,
+                      ended_at: datetime | None = None) -> None:
     """A stream no longer live: its camera game, if one is going, is told to
-    stop recording (the worker's heartbeat), once."""
+    stop recording (the worker's heartbeat), once -- dated by when YouTube
+    says it ended, else now. A shot after it is linked to the next stream."""
     for r in repo.runs_for_video(video_id):
         if (r.kind == "live" and r.source == "cameras" and r.status in ("processing", "live")
                 and r.stream_ended_at is None):
-            repo.update_run(r.id, stream_ended_at=now)
+            repo.update_run(r.id, stream_ended_at=ended_at or now)
+
+
+# A stream counts as upcoming when it is scheduled within this of now.
+UPCOMING_PAST_S = 30 * 60.0
+UPCOMING_AHEAD_S = 16 * 3600.0
+
+
+def upcoming_streams(metas, now: datetime) -> list[dict]:
+    """The sheets' streams still to come among ``metas``, soonest first."""
+    out = []
+    for meta in metas:
+        if meta.live_status != "upcoming" or meta.scheduled_at is None:
+            continue
+        lead = (meta.scheduled_at - now).total_seconds()
+        sheet = source.sheet_from_title(meta.title)
+        if sheet is None or not -UPCOMING_PAST_S <= lead <= UPCOMING_AHEAD_S:
+            continue
+        out.append({"video_id": meta.video_id, "sheet": sheet,
+                    "scheduled_at": meta.scheduled_at.isoformat()})
+    return sorted(out, key=lambda u: u["scheduled_at"])
 
 
 def poll(repo, youtube, *, processing_version: str, now: datetime,
@@ -324,9 +346,12 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
         seen = set(pl.last_seen_video_ids)
         new_ids = [v for v in ids if v not in seen]
         accepted_now = []
-        for meta in youtube.videos(new_ids) if new_ids else []:
+        metas = youtube.videos(new_ids) if new_ids else []
+        # Upcoming streams are never marked seen, so every poll sees them all.
+        upcoming = upcoming_streams(metas, now) if pl.input == "cameras" else []
+        for meta in metas:
             if meta.live_status != "live":
-                mark_stream_ended(repo, meta.video_id, now)
+                mark_stream_ended(repo, meta.video_id, now, meta.ended_at)
             if meta.live_status == "live":
                 if allowed_channels and meta.channel_id not in allowed_channels:
                     accepted_now.append(meta.video_id)
@@ -422,7 +447,7 @@ def poll(repo, youtube, *, processing_version: str, now: datetime,
             accepted_now.append(meta.video_id)
         repo.update_playlist(
             pl.id, last_polled_at=now, failures=0, last_error=None,
-            last_seen_video_ids=sorted(seen | set(accepted_now)),
+            last_seen_video_ids=sorted(seen | set(accepted_now)), upcoming=upcoming,
         )
     return {"created": created, "live": live_created, "skipped": skipped,
             "errors": errors}

@@ -402,6 +402,10 @@ class WatchedPlaylist:
     # for, and the sheets opened: each sheet once a window.
     standby_window: str | None = None
     standby_sheets: list = field(default_factory=list)
+    # Each sheet's stream still to come, as the last poll saw it: [{"video_id",
+    # "sheet", "scheduled_at" (ISO)}]. Its cameras are recorded from a little
+    # before (playlists.standbys).
+    upcoming: list = field(default_factory=list)
 
     to_dict = asdict
     from_dict = classmethod(_from_dict)
