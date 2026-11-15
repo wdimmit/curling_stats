@@ -3257,6 +3257,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                 # Where the stream began: the clock's first guess, and its
                 # fallback when no piece of the stream matches the cameras.
                 practice_fields["published_at"] = _iso(run.published_at)
+            # Where to read from, and its place among the sheet's games.
+            practice_fields.update(playlists.camera_game_fields(repo, run, t))
         if job.kind == "practice":
             practice_fields = {"source": practice.CAMERAS}
             resume = practice_resume(job)
@@ -3343,6 +3345,15 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
             return {"ok": True, "lease_expires_at": _iso(lease), "stop": True}
         if job.kind == "camera_live":
             run = repo.get_run(job.run_id)
+            if run is not None and body.get("own_until") and run.own_until is None:
+                # Where this game said its own ended: the next on its sheet is
+                # read from there (playlists.camera_game_fields).
+                try:
+                    until = datetime.fromisoformat(str(body["own_until"]))
+                    repo.update_run(run.id, own_until=until)
+                    run = repo.get_run(run.id)
+                except ValueError:
+                    log.warning("job %s sent an unreadable own_until", job.id)
             if run is not None:
                 # Which game this is: a worker that claimed it as a standby
                 # (playlists.standbys) learns here that its stream was found.
@@ -3350,7 +3361,8 @@ def create_app(repo, store, youtube, settings: Settings, now=utcnow, auth=None) 
                     "kind": "camera_live", "video_id": run.video_id, "title": run.title,
                     "channel_id": run.channel_id, "sheet": run.sheet,
                     "format": run.format or "fours", "published_at": _iso(run.published_at),
-                    "source": practice.CAMERAS}}
+                    "source": practice.CAMERAS,
+                    **playlists.camera_game_fields(repo, run, t)}}
                 if run.stream_ended_at is not None:
                     # The stream is over (the poller saw it): the cameras would
                     # go on for ever, so the worker stops recording them.

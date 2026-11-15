@@ -2,6 +2,9 @@
 aside for it, and a game published one end at a time while its stream plays."""
 
 import json
+from datetime import timedelta
+
+import pytest
 
 from curling_score.service.records import Job, Run
 from tests.test_service_api import (  # noqa: F401 - world is a fixture
@@ -335,3 +338,68 @@ class TestACameraGameEndToEnd:
         job = camera_claim(world, ["live", "camera_live"]).json()["job"]
         assert job["kind"] == "live" and "source" not in job
         assert world["repo"].get_run("r_cam").source is None
+
+
+class TestASheetsGamesInARow:
+    """The earlier game on a sheet says where it ended; the next reads from there."""
+
+    def beat(self, world, job_id="j_cam", **extra):
+        return world["client"].post(
+            f"/api/worker/jobs/{job_id}/progress", headers=WORKER,
+            json={"worker_id": "home", "phase": "live", "fraction": None,
+                  "message": "recorded 10 min", **extra}).json()
+
+    def test_a_lookahead_game_is_read_from_its_opening(self, world):
+        opened = T0 - timedelta(minutes=10)
+        add_camera_run(world, opened_at=opened)
+        job = camera_claim(world, ["camera_live"]).json()["job"]
+        assert job["analysis_from"] == opened.isoformat()
+        assert self.beat(world)["game"]["analysis_from"] == opened.isoformat()
+
+    def test_one_with_no_opening_is_read_from_ten_minutes_before_its_stream(self, world):
+        add_camera_run(world)
+        job = camera_claim(world, ["camera_live"]).json()["job"]
+        assert job["analysis_from"] == (T0 - timedelta(minutes=10)).isoformat()
+
+    def test_the_earlier_game_hears_when_the_next_one_opened(self, world):
+        add_camera_run(world)
+        camera_claim(world, ["camera_live"])
+        assert self.beat(world)["game"]["handoff_at"] is None
+        world["repo"].update_run("r_cam", handoff_at=T0 + timedelta(hours=2))
+        assert self.beat(world)["game"]["handoff_at"] == (T0 + timedelta(hours=2)).isoformat()
+
+    def test_the_later_game_waits_for_the_earlier_ones_word(self, world):
+        add_camera_run(world, run_id="r_A", job_id="j_A")
+        world["repo"].update_run("r_A", status="live")
+        add_camera_run(world, opened_at=T0, prev_run_id="r_A")
+        camera_claim(world, ["camera_live"])
+        camera_claim(world, ["camera_live"])
+        game = self.beat(world)["game"]
+        assert game["floor_pending"] is True and game["floor_at"] is None
+        until = T0 + timedelta(minutes=7)
+        self.beat(world, "j_A", own_until=until.isoformat())
+        assert world["repo"].get_run("r_A").own_until == until
+        game = self.beat(world)["game"]
+        assert game["floor_pending"] is False and game["floor_at"] == until.isoformat()
+
+    def test_a_first_game_on_its_sheet_reads_from_its_opening(self, world):
+        add_camera_run(world, opened_at=T0)
+        camera_claim(world, ["camera_live"])
+        game = self.beat(world)["game"]
+        assert (game["floor_pending"], game["floor_at"]) == (False, T0.isoformat())
+
+    @pytest.mark.parametrize("how", ["failed", "youtube", "too long"])
+    def test_a_dead_earlier_game_lets_the_later_one_go_in_the_end(self, world, how):
+        add_camera_run(world, run_id="r_A", job_id="j_A")
+        world["repo"].update_run("r_A", status="live")
+        add_camera_run(world, opened_at=T0, prev_run_id="r_A")
+        camera_claim(world, ["camera_live"])
+        camera_claim(world, ["camera_live"])
+        if how == "failed":
+            world["repo"].update_run("r_A", status="failed")
+        elif how == "youtube":
+            world["repo"].update_run("r_A", source=None)
+        else:
+            world["clock"].advance(45 * 60 + 1)
+        game = self.beat(world)["game"]
+        assert (game["floor_pending"], game["floor_at"]) == (False, T0.isoformat())

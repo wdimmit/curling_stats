@@ -145,6 +145,36 @@ def camera_games(repo) -> int:
 # A sheet's next stream is recorded from this long before its scheduled
 # start: its game may begin while the last league's stream is still on.
 LOOKAHEAD_S = 600.0
+# A game started on a sheet still read by the one before waits at most this
+# long for that one to say where its own game ended (Run.own_until), then is
+# read from its opening.
+FLOOR_WAIT_S = 45 * 60.0
+# A camera game with no lookahead opening is read from this long before its
+# stream began: its first rocks may come before the stream does.
+EARLY_READ_S = 600.0
+
+
+def camera_game_fields(repo, run, now: datetime) -> dict:
+    """What a camera game's worker is told of its place on the sheet: where to
+    read from (``analysis_from``), when the next game opened on its sheet
+    (``handoff_at``), and the floor of its own span -- where the game before
+    said its own ended, its opening when there is no camera game before it
+    or that one cannot say -- or that it is still to be said
+    (``floor_pending``)."""
+    def iso(t):
+        return t.isoformat() if t is not None else None
+
+    start = run.opened_at or (run.published_at - timedelta(seconds=EARLY_READ_S)
+                              if run.published_at is not None else None)
+    floor, pending = start, False
+    prev = repo.get_run(run.prev_run_id) if run.prev_run_id else None
+    if prev is not None and prev.source == "cameras" and prev.status != "failed":
+        if prev.own_until is not None:
+            floor = prev.own_until
+        elif run.opened_at is None or now < run.opened_at + timedelta(seconds=FLOOR_WAIT_S):
+            floor, pending = None, True
+    return {"analysis_from": iso(start), "handoff_at": iso(run.handoff_at),
+            "floor_at": iso(floor), "floor_pending": pending}
 
 
 def _sheet_reader(repo, sheet, but: str | None = None) -> Run | None:

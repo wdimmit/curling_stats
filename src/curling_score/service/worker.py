@@ -91,7 +91,7 @@ class ApiClient:
         r.raise_for_status()
         return r.json()["job"]
 
-    def progress(self, job_id, worker_id, phase, fraction, message):
+    def progress(self, job_id, worker_id, phase, fraction, message, extra=None):
         """Report where the job has got to. Best-effort by contract.
 
         A progress post is telemetry: it moves a bar on a page and pushes the
@@ -105,7 +105,7 @@ class ApiClient:
         """
         return self._post(f"/api/worker/jobs/{job_id}/progress",
                           {"worker_id": worker_id, "phase": phase,
-                           "fraction": fraction, "message": message},
+                           "fraction": fraction, "message": message, **(extra or {})},
                           timeout=PROGRESS_TIMEOUT_S)
 
     def artifacts(self, job_id, worker_id, files, detcache):

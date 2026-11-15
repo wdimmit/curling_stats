@@ -908,3 +908,19 @@ def test_an_idle_worker_prunes_the_cameras_hourly(tmp_path, monkeypatch):
     worker.run_forever(api, "home", root=tmp_path, weights=None, out_dir=tmp_path,
                        cache_gb=1.0, sleep=lambda s: None, once=True, live=Lane())
     assert pruned == [1]
+
+
+def test_progress_carries_extra_fields():
+    sent = {}
+
+    class Http:
+        def post(self, url, headers=None, json=None, timeout=None):
+            sent.update(json)
+            return type("R", (), {"status_code": 200, "content": b"{}",
+                                  "raise_for_status": lambda s: None,
+                                  "json": lambda s: {"ok": True}})()
+
+    api = worker.ApiClient("http://api", "t")
+    api._http = Http()
+    api.progress("j1", "w", "live", None, "msg", extra={"own_until": "2026-11-17T03:07:00+00:00"})
+    assert sent["own_until"] == "2026-11-17T03:07:00+00:00" and sent["phase"] == "live"
