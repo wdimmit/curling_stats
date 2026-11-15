@@ -159,6 +159,50 @@ def split_games(games, read_board) -> list[GameSegment]:
     return out
 
 
+def first_changeover(ends, after_t: float, head_s: float, *, active_until=None,
+                     active_before=None, cleared=None) -> float | None:
+    """Where the game going on at ``after_t`` handed the sheet over: the middle
+    of the first changeover after it, or None while that cannot be said yet.
+
+    From the last end begun before ``after_t``, the ends are followed while
+    each comes within a game's gap of the one before. A gap of a game's length
+    (``segment.GAME_GAP_S``), or a changeover-sized one
+    (``CHANGEOVER_MIN_GAP_S``) the board was cleared across (``cleared(t_end,
+    t_next) -> bool | None``, None while the board is not yet recorded far
+    enough), is the changeover. With no end after, the sheet quiet for a
+    game's gap since its last end or stone moving (``active_until``) is. No
+    end begun before ``after_t``, the recording past it and no stone moving
+    in the game's gap before it (``active_before``, the last moving before
+    it): the sheet was free then, and that is it."""
+    from curling_score.game.segment import GAME_GAP_S
+
+    if head_s < after_t:
+        return None
+    ends = sorted(ends, key=lambda e: e.start_s)
+    before = [i for i, e in enumerate(ends) if e.start_s < after_t]
+    if not before:
+        if active_before is not None and after_t - active_before < GAME_GAP_S:
+            return None            # an end still being played, not settled yet
+        return float(after_t)
+    i = before[-1]
+    while i + 1 < len(ends):
+        a, b = ends[i], ends[i + 1]
+        gap = b.start_s - a.end_s
+        if gap >= GAME_GAP_S:
+            return (a.end_s + b.start_s) / 2
+        if gap >= CHANGEOVER_MIN_GAP_S and cleared is not None:
+            got = cleared(a.end_s, b.start_s)
+            if got is None:
+                return None
+            if got:
+                return (a.end_s + b.start_s) / 2
+        i += 1
+    quiet = max(ends[i].end_s, active_until if active_until is not None else ends[i].end_s)
+    if head_s - quiet >= GAME_GAP_S:
+        return quiet + GAME_GAP_S / 2
+    return None
+
+
 def board_states(video, t0: float, t1: float, *, step_s: float = STEP_S,
                  half_s: float = HALF_S) -> list:
     """The wall scoreboard every ``step_s`` over ``t0..t1``: (t, "cards",

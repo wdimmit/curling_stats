@@ -1085,3 +1085,61 @@ class TestTheReceivingPanelsModel:
         same, _ = self.version(monkeypatch, tmp_path, house_weights="det")
         before, _ = self.version(monkeypatch, tmp_path)
         assert same == before and "+house" not in same
+
+
+
+class TestOwningASpanOfTheSheet:
+    """A camera game owns its span of the recording: from its floor (where the
+    game before said its own ended) to its first changeover after the next
+    game opened."""
+
+    class Pipe(Pipeline):
+        # Game A: top 600-1500, bottom 1500-2400; a 500 s changeover; game B:
+        # top 2900-3800, bottom 3800-4700; then an empty sheet.
+        def calibrate(self, path, until_s, start_s=None):
+            return super().calibrate(path, until_s)
+
+        def samples(self, path, setups, from_s, until_s, detector=None):
+            out, t = [], (int(from_s // 5) + 1) * 5.0 if from_s is not None else 0.0
+            while t <= until_s:
+                if 600 <= t < 1500 or 2900 <= t < 3800:
+                    top, bottom = 5, 0
+                elif 1500 <= t < 2400 or 3800 <= t < 4700:
+                    top, bottom = 0, 5
+                else:
+                    top, bottom = 0, 0
+                out.append(Sample(t=t, top_stones=top, bottom_stones=bottom))
+                t += 5.0
+            return out
+
+    def make(self):
+        pipe, rec, pub = self.Pipe(), Recording(), []
+        return session(pipe, rec, pub), pipe, rec, pub
+
+    def test_ends_past_its_own_until_are_not_built(self):
+        s, pipe, rec, pub = self.make()
+        s.set_ownership(handoff_s=2500.0)
+        assert s.deciding()
+        run_until(s, rec, 5400.0)
+        # Quiet a game's gap after A's last end: its span ends inside the gap.
+        assert 2400.0 < s.own_until_s < 2900.0 and not s.deciding()
+        assert pipe.built and all(b["end"] <= 2 for b in pipe.built)
+        assert all(e["start_s"] < s.own_until_s for g in pub[-1]["games"] for e in g["ends"])
+
+    def test_a_pending_floor_holds_every_end(self):
+        s, pipe, rec, _ = self.make()
+        s.set_ownership(floor_pending=True)
+        run_until(s, rec, 2800.0)
+        assert pipe.built == []
+        s.set_ownership(floor_s=0.0)
+        run_until(s, rec, 3000.0)
+        assert pipe.built
+
+    def test_the_floor_drops_the_game_before_it_and_numbers_from_one(self):
+        s, pipe, rec, pub = self.make()
+        s.set_ownership(floor_s=2650.0)
+        run_until(s, rec, 5400.0)
+        games = pub[-1]["games"]
+        assert len(games) == 1
+        assert [e["number"] for e in games[0]["ends"]] == [1, 2]
+        assert games[0]["ends"][0]["start_s"] >= 2650.0

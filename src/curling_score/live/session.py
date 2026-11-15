@@ -183,6 +183,68 @@ class LiveSession:
         self.prev_end_s = None
         self.done = False
         self._ended_calib_tries = 0
+        # Its span of the sheet (set_ownership): from the floor -- where the
+        # game before said its own ended -- to its own first changeover after
+        # the next game opened, or after its stream ended.
+        self.floor_s = None
+        self.floor_pending = False
+        self.handoff_s = None
+        self.stream_end_s = None
+        self.own_until_s = None
+
+    def set_ownership(self, *, floor_s=None, floor_pending=False, handoff_s=None,
+                      stream_end_s=None):
+        """Where this game's span of the sheet begins and how its end is found,
+        in the recording's seconds. ``floor_pending``: the game before has not
+        said where its own ended, so nothing is built yet. ``floor_s``: read
+        from there, as if the recording began there. ``handoff_s`` (the next
+        game opened) or ``stream_end_s``: from the earlier of them, this game
+        ends at its first changeover (`boardsplit.first_changeover`), and
+        nothing after it is read."""
+        if floor_s is not None and self.floor_s is None:
+            self.floor_s = float(floor_s)
+            self.start_s = max(self.start_s, self.floor_s)
+            self.samples = [x for x in self.samples if x.t >= self.floor_s]
+        self.floor_pending = bool(floor_pending) and self.floor_s is None
+        if handoff_s is not None:
+            self.handoff_s = float(handoff_s)
+        if stream_end_s is not None:
+            self.stream_end_s = float(stream_end_s)
+
+    def deciding(self) -> bool:
+        """Whether this game is still finding where its span ends: its stream
+        is over or the next game opened, and its changeover has not come."""
+        return self.own_until_s is None and (self.handoff_s is not None
+                                             or self.stream_end_s is not None)
+
+    def _decide_own_until(self):
+        if not self.deciding():
+            return
+        mark = min(t for t in (self.handoff_s, self.stream_end_s) if t is not None)
+        ends = [e for g in segment.settled_ends(self.samples, self.min_end_s,
+                                                ended=self.recording.ended())
+                for e in g.ends]
+        moving = [x.t for x in self.samples if x.top_stones or x.bottom_stones]
+        before = [t for t in moving if t < mark]
+        got = boardsplit.first_changeover(
+            ends, mark, self.profiled_to if self.profiled_to is not None else self.start_s,
+            active_until=moving[-1] if moving else None,
+            active_before=before[-1] if before else None, cleared=self._cleared)
+        if got is None:
+            return
+        self.own_until_s = float(got)
+        self.samples = [x for x in self.samples if x.t < self.own_until_s]
+        self.progress(f"this game's span of the sheet ends at {self.own_until_s:.0f} s")
+
+    def _cleared(self, t_end, t_next):
+        """The board cleared across a gap, or None until it is recorded far
+        enough past it to tell."""
+        if (not self.recording.ended() and self.recording.head_s()
+                < t_next + boardsplit.LOOK_AFTER_S + boardsplit.HALF_S):
+            return None
+        return boardsplit.board_cleared(
+            self._board_across(t_end - boardsplit.LOOK_BEFORE_S,
+                               t_next + boardsplit.LOOK_AFTER_S), t_end)
 
     # --- what the lane asks -------------------------------------------------
 
@@ -217,6 +279,7 @@ class LiveSession:
         if self.calibration is None:
             return None
         self._extend_profile()
+        self._decide_own_until()
         nxt = self._next_end()
         if nxt is not None:
             self._build(*nxt)
@@ -284,7 +347,8 @@ class LiveSession:
         new = self.pipeline.samples(self.recording.path, self.calibration.setups,
                                     start, head, detector=self.models.detector)
         new = [s for s in new if (self.profiled_to is None or s.t > self.profiled_to)
-               and s.t >= self.start_s]
+               and s.t >= self.start_s
+               and (self.own_until_s is None or s.t < self.own_until_s)]
         if new:
             self.samples.extend(new)
             self.profiled_to = new[-1].t
@@ -360,6 +424,10 @@ class LiveSession:
         return dataclasses.replace(game, ends=ends, end_s=ends[-1].end_s)
 
     def _next_end(self):
+        if self.floor_pending:
+            # The game before has not said where its own ended: anything near
+            # the start could be its.
+            return None
         for game in self._settled():
             for end in game.ends:
                 if (game.index, end.number) not in self.built:

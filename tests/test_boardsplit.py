@@ -296,3 +296,51 @@ class TestAnalyzeCallsIt:
         i_split = src.index("boardsplit.split_games(")
         assert i_seg < i_join < i_split
         assert "skip_scoreboard" in src[i_seg:i_join]
+
+
+def chain(*spans, houses=("top", "bottom")):
+    return [EndSegment(number=i + 1, house=houses[i % 2], start_s=a, end_s=b)
+            for i, (a, b) in enumerate(spans)]
+
+
+class TestFirstChangeover:
+    def test_ends_within_a_game_walk_on_to_a_quiet_sheet(self):
+        ends = chain((0, 600), (610, 1200), (1210, 1800))
+        assert B.first_changeover(ends, 700, 4000) == 1800 + 120
+
+    def test_a_changeover_gap_returns_its_middle(self):
+        ends = chain((0, 600), (610, 1200), (1600, 2000))
+        assert B.first_changeover(ends, 700, 4000) == 1400
+
+    def test_a_shorter_gap_counts_only_with_the_board_cleared(self):
+        ends = chain((0, 600), (750, 1200))
+        assert B.first_changeover(ends, 500, 1300) is None
+        assert B.first_changeover(ends, 500, 1300, cleared=lambda a, b: True) == 675
+
+    def test_an_undecided_board_waits(self):
+        ends = chain((0, 600), (750, 1200))
+        assert B.first_changeover(ends, 500, 1300, cleared=lambda a, b: None) is None
+
+    def test_a_game_still_going_is_undecided(self):
+        assert B.first_changeover(chain((0, 600)), 500, 700) is None
+        # stones still moving after the last settled end: not quiet yet
+        assert B.first_changeover(chain((0, 600)), 500, 1000, active_until=900) is None
+        assert B.first_changeover(chain((0, 600)), 500, 1200, active_until=900) == 900 + 120
+
+    def test_nothing_before_the_mark_owns_from_the_mark(self):
+        assert B.first_changeover(chain((1000, 1500)), 500, 2000) == 500
+
+    def test_before_the_recording_reaches_the_mark_it_waits(self):
+        assert B.first_changeover([], 500, 400) is None
+
+    def test_a_first_end_still_being_played_at_the_mark_waits(self):
+        assert B.first_changeover([], 500, 600, active_before=450) is None
+        assert B.first_changeover([], 500, 600, active_before=100) == 500
+
+    def test_the_draw_switch_cuts_before_the_next_leagues_first_end(self):
+        # 09/29: the Supper game's eight ends, 470 s of changeover, then the
+        # Super game's first end -- with the Super stream opened in the gap.
+        supper = [(i * 870.0, i * 870.0 + 860.0) for i in range(8)]
+        ends = chain(*supper, (supper[-1][1] + 470.0, supper[-1][1] + 900.0))
+        last = supper[-1][1]
+        assert B.first_changeover(ends, last + 200.0, last + 2000.0) == last + 235.0
