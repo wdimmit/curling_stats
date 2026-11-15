@@ -282,6 +282,7 @@ class TestACamerasPlaylist:
 
     def test_a_youtube_playlist_is_unchanged(self):
         repo, yt = live_setup()
+        repo.put_playlist(watched(schedule=NIGHT, input="youtube"))
         poll(repo, yt, camera_sheets=ALL_SHEETS, camera_max_sheets=5)
         (run,) = repo.list_runs()
         assert run.source is None and repo.job_for_run(run.id).kind == "live"

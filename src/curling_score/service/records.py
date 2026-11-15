@@ -388,9 +388,11 @@ class WatchedPlaylist:
     schedule: list = field(default_factory=list)
     live_poll_s: float = 180.0
     idle_poll_s: float | None = 3600.0
-    # Where its live games are read from: "youtube" (the stream) or "cameras"
-    # (each sheet's own cameras, up to the API's CAMERA_MAX_SHEETS at once).
-    input: str = "youtube"
+    # Where its live games are read from: "cameras" (each sheet's own cameras,
+    # up to the API's CAMERA_MAX_SHEETS at once; the stream for the rest) or
+    # "youtube" (the stream). The cameras unless a playlist says otherwise,
+    # those saved before there was a choice among them.
+    input: str = "cameras"
     # The schedule window (its start, ISO) the sheets' standbys were opened
     # for, and the sheets opened: each sheet once a window.
     standby_window: str | None = None

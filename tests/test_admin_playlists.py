@@ -191,6 +191,16 @@ class TestTheScheduledPoll:
 
 
 class TestACamerasPlaylist:
+    def test_a_playlist_reads_the_cameras_unless_told_otherwise(self):
+        from curling_score.service.records import WatchedPlaylist
+
+        client, repo, _ = make()
+        pid = add(client, playlist_id="PLabc").json()["id"]
+        assert repo.get_playlist(pid).input == "cameras"
+        stored = repo.get_playlist(pid).to_dict()
+        del stored["input"]                         # a playlist from before inputs
+        assert WatchedPlaylist.from_dict(stored).input == "cameras"
+
     def test_its_input_can_be_set_and_nonsense_is_refused(self):
         client, repo, _ = make()
         pid = add(client, playlist_id="PLabc", input="cameras").json()["id"]
