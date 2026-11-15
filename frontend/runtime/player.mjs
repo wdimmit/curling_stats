@@ -14,8 +14,13 @@
  */
 let player = null;           // the YT.Player, or "none" once it has failed
 let ready = false;
-let pending = null;          // a seek asked for before the player could take it: {t, autoplay}
+let pending = null;          // a seek asked for before the player could take it: {t, autoplay, id}
 let container = null;
+// The game's own video, and the one in the player now: a shot thrown before
+// its stream began (or after it ended) plays from a neighbouring stream.
+let ownId = null;
+let currentId = null;
+let overlay = null;          // "No stream for this shot", over the player
 
 /* Written into #video rather than rendered by React. `.fallback` is styled
  * `height:100%` to fill the video box, and React must own no children there:
@@ -36,6 +41,7 @@ function fail(why) {
 export function mount(el, videoId, { autoplay = () => true } = {}) {
   if (player || !el) return;                 // already mounted, or already failed
   container = el;
+  ownId = currentId = videoId;
 
   const slot = document.createElement("div");
   slot.id = "player";
@@ -49,9 +55,10 @@ export function mount(el, videoId, { autoplay = () => true } = {}) {
         onReady: () => {
           ready = true;
           if (pending !== null) {
-            const { t, autoplay: play } = pending;
+            const { t, autoplay: play, id } = pending;
             pending = null;
-            seek(t, play ?? autoplay());
+            if (id && id !== currentId) show(id, t, play ?? autoplay());
+            else seek(t, play ?? autoplay());
           }
         },
         onError: e => fail(`player error ${e.data}`),
@@ -74,6 +81,38 @@ export function seek(t, autoplay) {
   if (!ready) { pending = { t, autoplay }; return; }
   player.seekTo(t, true);
   if (autoplay) player.playVideo();
+}
+
+/* Play from ``t`` of video ``id``: the game's own (a seek), or a neighbouring
+ * stream's, loaded in the same player -- never remounted. */
+export function show(id, t, autoplay) {
+  if (player === "none") return;
+  noStream(false);
+  if (!id || id === currentId) { seek(t, autoplay); return; }
+  if (!ready) { pending = { t, autoplay, id }; return; }
+  currentId = id;
+  const args = { videoId: id, startSeconds: t };
+  if (autoplay) player.loadVideoById(args); else player.cueVideoById(args);
+}
+
+/* A shot no stream shows: said over the player, and the video paused. */
+export function noStream(on = true) {
+  if (!container) return;
+  if (!overlay) {
+    if (!on) return;
+    overlay = document.createElement("div");
+    overlay.className = "nostream";
+    overlay.textContent = "No stream for this shot.";
+    container.appendChild(overlay);
+  }
+  overlay.hidden = !on;
+  if (on) pause();
+}
+
+/* Whether the player shows the game's own video: a list that follows the
+ * playhead, or a pause after each rock, means nothing on another. */
+export function onOwnVideo() {
+  return currentId === ownId;
 }
 
 /* Where the playhead is, for a list that follows along. Guarded exactly as

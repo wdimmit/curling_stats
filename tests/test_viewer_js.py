@@ -834,6 +834,33 @@ class TestVideoTiming:
                      "state.leadIn = 10; out(shotVideoTime(merge(g, e, e.shots[0])));")
         assert got == 0
 
+    def test_a_shot_plays_from_its_own_video_unless_it_says_another(self):
+        got = run_js(setup(doc([shot(1, "red", "lead", t_release_s=83.0)])) +
+                     "state.leadIn = 10; out(shotVideo(merge(g, e, e.shots[0]), 'DOC'));")
+        assert got == {"id": "DOC", "t": 73.0}
+
+    def test_a_shot_before_the_stream_plays_from_the_one_before(self):
+        js = ("state.leadIn = 3; const s = merge(g, e, e.shots[0]);"
+              "out([shotVideo(s, 'SUPER'), shotVideoTime(s), shotLink(s, 'SUPER')]);")
+        got = run_js(setup(doc([shot(1, "red", "lead", t_release_s=-300.0,
+                                     video={"id": "SUPPER", "shift_s": 7199.0})])) + js)
+        assert got == [{"id": "SUPPER", "t": 6896.0}, None,
+                       "https://youtu.be/SUPPER?t=6896"]
+
+    def test_a_shot_no_stream_shows_has_no_video_and_no_link(self):
+        js = ("state.leadIn = 3; const s = merge(g, e, e.shots[0]);"
+              "out([shotVideo(s, 'SUPER'), shotVideoTime(s), shotLink(s, 'SUPER')]);")
+        got = run_js(setup(doc([shot(1, "red", "lead", t_release_s=-300.0, video=None)])) + js)
+        assert got == [None, None, None]
+
+    def test_follow_ignores_another_video(self):
+        # A row the playhead of this game's video can never be on.
+        js = ("out(rockRows(g, 0, 3).map(r => r.tVideo));")
+        got = run_js(setup(doc([shot(1, "red", "lead", t_release_s=100.0),
+                                shot(2, "yellow", "lead", t_release_s=-300.0,
+                                     video={"id": "SUPPER", "shift_s": 7199.0})])) + js)
+        assert isinstance(got[0], (int, float)) and got[1] is None
+
     def test_a_shot_with_no_entry_time_falls_back_further_behind_its_rest(self):
         # Without an entry time the throw is somewhere before the stone
         # stopped, so the lead-in has to cover the flight as well.
@@ -3165,7 +3192,7 @@ class TestTheAppKnowsItsTab:
     def test_a_link_opened_in_a_tab_already_on_the_chart_goes_to_its_rock(self):
         src = self.APP.read_text()
         assert 'addEventListener("hashchange", onHash)' in src
-        assert "if (typeof t === \"number\") player.seek(t, false);" in src
+        assert "play(buildGameView(doc, to.gi, store.getOverrides()).ends[to.ei].shots[to.si], false);" in src
         # A link naming no rock puts the URL back on the one being shown.
         assert 'history.replaceState(null, "", written.current ||' in src
 
@@ -3174,7 +3201,7 @@ class TestTheAppKnowsItsTab:
 
     def test_a_restored_cursor_seeks_the_player_once_on_mount(self):
         src = self.APP.read_text()
-        assert "player.seek(shotVideoTime(" in src and ", false)" in src
+        assert "play(view.ends[ui.ei]?.shots[ui.si], false);" in src
 
     def test_a_step_follows_the_video_again(self):
         src = self.APP.read_text()

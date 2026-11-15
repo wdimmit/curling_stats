@@ -28,15 +28,39 @@ export function renumberNotice(before, after) {
  * rock settled from its release in a chart older than 2026.10.01.1 carries no
  * release, but its t_enter is that release. */
 const TIMED_BY_RELEASE = new Set(["hogged", "release-add", "release-remove"]);
-export function shotVideoTime(s, leadIn) {
+function leadInTime(s, leadIn) {
   if (!s) return null;
-  const back = t => Math.max(0, t - leadIn);
+  const back = t => t - leadIn;
   if (typeof s.t_release_s === "number") return back(s.t_release_s);
   if (typeof s.t_enter_s === "number")
     return back(s.t_enter_s - (TIMED_BY_RELEASE.has(s.reason) ? 0 : RELEASE_TO_ARRIVAL_S));
   if (typeof s.t_rest_s === "number") return back(s.t_rest_s - 8 - RELEASE_TO_ARRIVAL_S);
   if (typeof s.t_guess_s === "number") return back(s.t_guess_s - RELEASE_TO_ARRIVAL_S);
   return null;
+}
+
+/* Where in this game's own video a shot is. A shot outside its own stream --
+ * thrown before it began or after it ended, on a camera game -- says which
+ * video shows it (`video`, service/streamlinks), and is in none of this one. */
+export function shotVideoTime(s, leadIn) {
+  if (!s || s.video !== undefined) return null;
+  const t = leadInTime(s, leadIn);
+  return t === null ? null : Math.max(0, t);
+}
+
+/* Which video shows a shot, and where: {id, t}, or null when no stream does.
+ * `docVideoId` is this game's own video. */
+export function shotVideo(s, leadIn, docVideoId) {
+  const t = leadInTime(s, leadIn);
+  if (t === null || s.video === null) return null;
+  if (s.video) return { id: s.video.id, t: Math.max(0, t + s.video.shift_s) };
+  return { id: docVideoId, t: Math.max(0, t) };
+}
+
+/* A shot's YouTube link, or null when no stream shows it. */
+export function shotLink(s, leadIn, docVideoId) {
+  const v = shotVideo(s, leadIn, docVideoId);
+  return v ? `https://youtu.be/${v.id}?t=${Math.floor(v.t)}` : null;
 }
 
 /* One cell of the score table. An end with no board score is not a zero: the

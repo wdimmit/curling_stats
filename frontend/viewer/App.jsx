@@ -15,7 +15,7 @@ import {
   buildGameView, chartedNotice, cumulativeThinking, cursor as cursorOf, endKey, flagPlace,
   gatherStats, gatherThinking, formatWarning,
   identity, isBlank, isGraded, liveGame, nextBlankAfter, chartedNext, blankQueue, peekMode,
-  renumberNotice, shotVideoTime, overrides as edit,
+  renumberNotice, shotLink, shotVideo, overrides as edit,
   stepRock, parseHash, formatHash, cursorFromHash, withHash, teamNames, typedTeamNames, shortOf,
   shotClipName, shotClipsOffered, houseImageCaption, houseImageName, endChoices, switchedEnds,
   chartSwapOff, endIdentity, restPassed,
@@ -174,14 +174,21 @@ export function App({ doc, config, cursor, reload }) {
 
   /* --------------------------------------------------------------- actions */
 
-  const seek = useCallback(t => { if (t !== null) player.seek(t, ui.autoplay); },
-                           [ui.autoplay]);
+  // A shot is played from the video that shows it: the game's own, or a
+  // neighbouring stream's for one thrown before this stream began or after it
+  // ended (service/streamlinks); none says so over the player.
+  const play = useCallback((s, autoplay) => {
+    if (!s) return;
+    const v = shotVideo(s, ui.leadIn, doc.source.video_id);
+    if (v) player.show(v.id, v.t, autoplay);
+    else if (s.video === null) player.noStream(true);
+  }, [ui.leadIn, doc.source.video_id]);
   const seekTimer = useRef(null);
   const seekSoon = useCallback(s => {
     clearTimeout(seekTimer.current);
     // Holding an arrow key should not fire a seek per shot skipped over.
-    seekTimer.current = setTimeout(() => seek(shotVideoTime(s, ui.leadIn)), 200);
-  }, [seek, ui.leadIn]);
+    seekTimer.current = setTimeout(() => play(s, ui.autoplay), 200);
+  }, [play, ui.autoplay]);
 
   /* Pause after each rock, in every layout: the charter wants the house
      still to place it, and a viewer to read it before the next one. Watched
@@ -191,7 +198,7 @@ export function App({ doc, config, cursor, reload }) {
     if (!ui.pauseAfterShot) return undefined;
     let last = null;
     const id = setInterval(() => {
-      const t = player.isPlaying() ? player.currentTime() : null;
+      const t = player.isPlaying() && player.onOwnVideo() ? player.currentTime() : null;
       if (restPassed(view, last, t)) player.pause();
       last = t;
     }, 250);
@@ -341,9 +348,7 @@ export function App({ doc, config, cursor, reload }) {
    * moving afterward -- that is what stepping and seekSoon are for. */
   useEffect(() => {
     if (!ui.restored) return;
-    const s = view.ends[ui.ei]?.shots[ui.si];
-    if (typeof shotVideoTime(s, ui.leadIn) === "number")
-      player.seek(shotVideoTime(s, ui.leadIn), false);
+    play(view.ends[ui.ei]?.shots[ui.si], false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -376,13 +381,11 @@ export function App({ doc, config, cursor, reload }) {
       }
       dispatch({ type: "set", patch: { ...to, selStone: null, following: true,
                                         ...(hash.tab ? { tab: hash.tab } : {}) } });
-      const s = buildGameView(doc, to.gi, store.getOverrides()).ends[to.ei].shots[to.si];
-      const t = shotVideoTime(s, ui.leadIn);
-      if (typeof t === "number") player.seek(t, false);
+      play(buildGameView(doc, to.gi, store.getOverrides()).ends[to.ei].shots[to.si], false);
     };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
-  }, [doc, ui.leadIn]);
+  }, [doc, play]);
 
   /* The crop is measured, so it has to be re-measured when the box changes --
    * and a rotation that leaves the phone gate or the portrait iPad's has to
@@ -460,7 +463,7 @@ export function App({ doc, config, cursor, reload }) {
         case "r": dispatch({ type: "set", patch: { placeColor: "red" } }); break;
         case "y": dispatch({ type: "set", patch: { placeColor: "yellow" } }); break;
         case "t": setPref({ showTrack: !ui.showTrack }); break;
-        case "v": seek(shotVideoTime(shot, ui.leadIn)); break;
+        case "v": play(shot, ui.autoplay); break;
         case "p": player.togglePlay(); break;
         case "x": if (ui.selStone !== null) actions.removeStone(ui.selStone); break;
         case "d": if (ui.selStone !== null) patch({ delivered_stone_index: ui.selStone }); break;
@@ -482,7 +485,7 @@ export function App({ doc, config, cursor, reload }) {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [ui, shots.length, queue, goTo, patch, seek, shot, actions, setPref, tablet, wide, chartedTablet]);
+  }, [ui, shots.length, queue, goTo, patch, play, shot, actions, setPref, tablet, wide, chartedTablet]);
 
   /* ------------------------------------------------------------------ view */
 
@@ -495,9 +498,8 @@ export function App({ doc, config, cursor, reload }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const t = shotVideoTime(shot, ui.leadIn);
-  const href = t !== null ? `https://youtu.be/${doc.source.video_id}?t=${Math.floor(t)}`
-                          : shot?.youtube_url;
+  const href = shot ? (shotLink(shot, ui.leadIn, doc.source.video_id)
+                      ?? (shot.video === undefined ? shot.youtube_url : null)) : null;
 
   const others = view.ends[ui.ei]?.shots.filter(x => shot && identity(x) !== identity(shot)) ?? [];
   const prevBtn = (
@@ -509,7 +511,7 @@ export function App({ doc, config, cursor, reload }) {
             onClick={() => goTo(ui.ei, ui.si + 1)}>→</button>
   );
   const replayBtn = (
-    <button id="replay" title="Replay from before the throw (v)" onClick={() => seek(t)}>↻ Replay</button>
+    <button id="replay" title="Replay from before the throw (v)" onClick={() => play(shot, ui.autoplay)}>↻ Replay</button>
   );
   // One button, in one place per layout: the wide control row, the portrait
   // iPad's house card (it confirms the house), or the narrow control row.
