@@ -66,3 +66,25 @@ Every one started on schedule. On Saturday 11/14 at 17:20 no playlist had an upc
   between two live workers, and the session's span logic is covered by the tests above.
 
 The gate is a back-to-back night after the deploy (Tuesday Supper → Super, 11/17).
+
+## Final review (fresh reviewer, 2026-11-14): 2 Critical, 5 Important, fixed in 030a3299
+
+- **The earlier game's end now reaches the next game at once.**
+  - It is set as soon as it is found, sent on an immediate heartbeat, and carried again in the completion.
+  - A finished earlier game that never said counts as having no word, so the next reads from its opening rather than
+    waiting 45 min.
+- **Profiling stops at the earlier game's end.** It no longer re-reads an ever-growing span and starves the worker's
+  other games.
+- **A changeover is now a 10-min gap, or 2 min with the board cleared.** A 4-6 min mid-game pause no longer cuts a
+  game short.
+- **An early next game is cut back.** A next league that began within 15 min before the opening is not the earlier
+  game's.
+- **The earlier game's stream end comes from YouTube**, not from when the worker heard of it.
+- **One live claim per poll**, so two workers share a draw opened all at once.
+- **A game's recording keeps to its own span.** The earlier game stops recording once its end is found, and the later
+  game's kept files start at its floor, so a reprocess reads only its own game.
+- **A waiting window standby is adopted** by the scheduled stream rather than counted as the game before.
+- **Privacy wording corrected.**
+- **Nine minors are deferred in the ledger.** The most likely to show:
+  - an earlier game read from YouTube is never linked, so early shots say "no stream";
+  - shots in a stream's first ~5 s get no YouTube link.
